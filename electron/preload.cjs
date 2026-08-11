@@ -16,5 +16,16 @@ contextBridge.exposeInMainWorld('jarvisElectron', {
       ipcRenderer.on('mic:status', listener);
       return () => ipcRenderer.removeListener('mic:status', listener);
     }
+  },
+  update: {
+    getVersion: () => ipcRenderer.invoke('update:get-version'),
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onState: (callback) => {
+      const listener = (event, data) => callback(data);
+      ipcRenderer.on('update:state', listener);
+      return () => ipcRenderer.removeListener('update:state', listener);
+    }
   }
 });

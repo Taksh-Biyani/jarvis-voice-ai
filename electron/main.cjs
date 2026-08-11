@@ -1,7 +1,9 @@
 const { app, BrowserWindow, Tray, Menu, shell, session, ipcMain, nativeImage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const https = require('https');
 const { spawn } = require('child_process');
+const { classifyUpdate } = require('./update-classify.cjs');
 
 const DEV_URL = 'http://localhost:3000';
 const ICON_PATH = path.join(__dirname, 'icon.png');
@@ -11,6 +13,13 @@ let mainWindow = null;
 let tray = null;
 let micProcess = null;
 app.isQuitting = false;
+
+// Auto-download only kicks in for major bumps (see update-classify.cjs) —
+// minor/patch updates wait for an explicit renderer-triggered download.
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
+let pendingUpdate = null; // { version, classification } once update-available fires
+let updateReadyToInstall = false;
 
 // Only one JARVIS instance/tray icon at a time.
 if (!app.requestSingleInstanceLock()) {
@@ -222,6 +231,79 @@ function registerSteamIpc() {
   });
 }
 
+function sendUpdateState(state) {
+  if (mainWindow) mainWindow.webContents.send('update:state', state);
+}
+
+function registerUpdaterEvents() {
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateState({ status: 'checking' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    const classification = classifyUpdate(app.getVersion(), info.version);
+    pendingUpdate = { version: info.version, classification };
+
+    if (classification === 'major') {
+      // Major bumps auto-download silently — no click needed until install.
+      sendUpdateState({ status: 'downloading', version: info.version, classification, progress: 0 });
+      autoUpdater.downloadUpdate();
+    } else {
+      // Minor/patch bumps surface passively; download waits for update:download.
+      sendUpdateState({ status: 'available', version: info.version, classification });
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    pendingUpdate = null;
+    sendUpdateState({ status: 'idle' });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateState({
+      status: 'downloading',
+      version: pendingUpdate?.version,
+      classification: pendingUpdate?.classification,
+      progress: Math.round(progress.percent)
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    updateReadyToInstall = true;
+    sendUpdateState({ status: 'ready', version: info.version, classification: pendingUpdate?.classification });
+  });
+
+  autoUpdater.on('error', (err) => {
+    // A failed silent launch check shouldn't alarm the user — it just logs
+    // to the terminal panel via the renderer's console-message bridge and
+    // leaves the UI at whatever state it was already in (usually 'idle').
+    console.warn('[autoUpdater]', err?.message || err);
+    sendUpdateState({ status: 'error', message: err?.message || 'Update check failed' });
+  });
+}
+
+function registerUpdateIpc() {
+  ipcMain.handle('update:get-version', () => app.getVersion());
+
+  ipcMain.handle('update:check', () => {
+    if (!app.isPackaged) {
+      // Dev builds have no publish feed to compare against — report idle
+      // instead of letting electron-updater throw on a missing app-update.yml.
+      sendUpdateState({ status: 'idle' });
+      return;
+    }
+    autoUpdater.checkForUpdates();
+  });
+
+  ipcMain.handle('update:download', () => {
+    if (pendingUpdate) autoUpdater.downloadUpdate();
+  });
+
+  ipcMain.handle('update:install', () => {
+    if (updateReadyToInstall) autoUpdater.quitAndInstall();
+  });
+}
+
 app.whenReady().then(() => {
   // Grant microphone access automatically — this is a trusted first-party app,
   // and the voice pipeline is core functionality, not an optional feature.
@@ -231,9 +313,17 @@ app.whenReady().then(() => {
 
   registerSteamIpc();
   registerMicIpc();
+  registerUpdaterEvents();
+  registerUpdateIpc();
   createWindow();
   createTray();
   configureAutoLaunch();
+
+  if (app.isPackaged) {
+    // Silent launch check — errors (offline, rate-limited) are swallowed by
+    // the 'error' handler above rather than surfaced as a popup.
+    autoUpdater.checkForUpdates().catch(() => {});
+  }
 
   app.on('activate', () => {
     if (mainWindow) {

@@ -21,8 +21,9 @@
       </div>
 
       <div style="display: flex; align-items: center; gap: 12px;">
-        <button class="btn-harness" id="settingsBtn" style="border-color: var(--border-cyan); color: var(--cyan-bright);" title="Settings">
+        <button class="btn-harness" id="settingsBtn" style="border-color: var(--border-cyan); color: var(--cyan-bright); position: relative;" title="Settings">
           ⚙️ SETTINGS
+          <span class="settings-update-badge" id="settingsUpdateBadge"></span>
         </button>
 
         <button class="btn-harness" id="muteBtn" style="border-color: var(--border-gold); color: var(--gold-glow);" title="Toggle Voice Output">
@@ -234,6 +235,17 @@
         <div class="settings-hint">Restart JARVIS after adding/changing the Deepgram key to activate it.</div>
         <button class="btn-steam-save" id="apiKeysSaveBtn">SAVE KEYS</button>
         <div class="steam-library-status" id="apiKeysStatus"></div>
+      </div>
+
+      <div class="settings-section" id="updateSection" style="display: none;">
+        <div class="settings-section-title">🔄 Software Update</div>
+        <div class="settings-row">
+          <span id="updateStatusText">Checking for updates…</span>
+        </div>
+        <div class="update-progress-track" id="updateProgressTrack" style="display: none;">
+          <div class="update-progress-fill" id="updateProgressFill"></div>
+        </div>
+        <button class="btn-steam-save" id="updateActionBtn">CHECK FOR UPDATES</button>
       </div>
     </div>
   </div>

@@ -60,6 +60,14 @@ Click **⚙️ SETTINGS** in the header to configure:
   this switch. Either way, if Groq fails (rate-limited, network error),
   JARVIS falls back to OpenRouter (if configured), then to the local
   knowledge base — same as always.
+- **Software Update** (packaged app only, not `npm run dev`) — shows the
+  installed version and checks GitHub Releases for newer ones. Major
+  version bumps (`1.x` → `2.0.0`) download automatically in the background
+  and just need a click on **Restart & Install** when ready. Minor/patch
+  bumps (`1.0.0` → `1.1.0`) show a passive **Download Update** button
+  instead — nothing downloads until you click it. Either way, installing
+  always requires the explicit restart click; nothing installs itself
+  without your say-so.
 
 ## Running it
 
@@ -78,6 +86,28 @@ tray icon (the browser's own SpeechRecognition API is used instead).
     npm run electron:build
 
 Produces a Windows installer in `release/`.
+
+## Releasing an update
+
+`npm run electron:build` only builds locally — it doesn't publish anything,
+so existing installs won't see it as an update. To cut a real release that
+the in-app updater will pick up:
+
+1. Bump `"version"` in `package.json` (e.g. `1.0.0` → `1.1.0`). This is
+   what the updater compares against — skipping it means the release won't
+   be recognized as newer.
+2. Generate a GitHub Personal Access Token with `repo` scope (or a
+   fine-grained token scoped to this repo with "Contents: Read and write")
+   at https://github.com/settings/tokens.
+3. Set it as an environment variable and run the release script:
+
+       $env:GH_TOKEN = "ghp_..."     # PowerShell, current session only
+       npm run electron:release
+
+   This builds the installer and publishes it as a live (non-draft) GitHub
+   Release automatically — nothing to do by hand on github.com afterward.
+   A **draft** release is invisible to the in-app updater, so don't publish
+   through any other path that leaves it in draft state.
 
 ## Tests
 

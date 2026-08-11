@@ -12,9 +12,11 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:build": "vite build && electron-builder --win",
+    "electron:release": "vite build && electron-builder --win --publish always",
     "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "lucide": "^0.344.0"
   },
   "devDependencies": {
@@ -27,6 +29,11 @@
     "productName": "JARVIS",
     "directories": {
       "output": "release"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Taksh-Biyani",
+      "repo": "jarvis-voice-ai"
     },
     "files": [
       "dist/**/*",

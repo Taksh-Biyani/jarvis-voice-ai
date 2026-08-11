@@ -2,6 +2,7 @@ import { VoiceEngine } from './voice-engine.js';
 import { BrowserHarness } from './harness.js';
 import { JarvisCore } from './jarvis-core.js';
 import { loadSettings, saveSettings } from './settings.js';
+import { isUpdateSupported, getCurrentVersion, checkForUpdate, downloadUpdate, installUpdate, onUpdateState } from './update-manager.js';
 
 // DOM Element References
 const micBtn = document.getElementById('micBtn');
@@ -268,6 +269,9 @@ function initApp() {
 
   // 8b. Settings Panel (general prefs, voice gender, sound meter, API keys)
   initSettingsPanel();
+
+  // 8c. Software Update Panel (Electron-only — no-op in plain browser dev mode)
+  initUpdatePanel();
 
   // Voice & Mute Control Handlers
   if (micBtn) {
@@ -650,6 +654,86 @@ function initSettingsPanel() {
       }
     });
   }
+}
+
+/**
+ * Wires the Settings modal's "Software Update" section to the main-process
+ * autoUpdater via update-manager.js. Hidden entirely outside Electron
+ * (plain `npm run dev` browser tab), since there's nothing to update there.
+ */
+function initUpdatePanel() {
+  if (!isUpdateSupported()) return;
+
+  const updateSection = document.getElementById('updateSection');
+  const updateStatusText = document.getElementById('updateStatusText');
+  const updateProgressTrack = document.getElementById('updateProgressTrack');
+  const updateProgressFill = document.getElementById('updateProgressFill');
+  const updateActionBtn = document.getElementById('updateActionBtn');
+  const settingsUpdateBadge = document.getElementById('settingsUpdateBadge');
+
+  if (!updateSection || !updateActionBtn) return;
+  updateSection.style.display = '';
+
+  let currentVersion = '';
+  let latestStatus = 'checking';
+
+  getCurrentVersion().then((version) => {
+    currentVersion = version || '';
+  });
+
+  const renderState = (state) => {
+    latestStatus = state.status;
+
+    if (updateProgressTrack) updateProgressTrack.style.display = state.status === 'downloading' ? '' : 'none';
+    if (updateProgressFill) updateProgressFill.style.width = `${state.progress || 0}%`;
+    if (settingsUpdateBadge) settingsUpdateBadge.classList.toggle('visible', state.status === 'available' || state.status === 'ready');
+
+    switch (state.status) {
+      case 'checking':
+        if (updateStatusText) updateStatusText.textContent = 'Checking for updates…';
+        updateActionBtn.textContent = 'CHECKING…';
+        updateActionBtn.disabled = true;
+        break;
+      case 'available':
+        if (updateStatusText) updateStatusText.textContent = `Update available (v${state.version})`;
+        updateActionBtn.textContent = 'DOWNLOAD UPDATE';
+        updateActionBtn.disabled = false;
+        break;
+      case 'downloading':
+        if (updateStatusText) updateStatusText.textContent = `Downloading update… ${state.progress || 0}%`;
+        updateActionBtn.textContent = 'DOWNLOADING…';
+        updateActionBtn.disabled = true;
+        break;
+      case 'ready':
+        if (updateStatusText) updateStatusText.textContent = `Update ready (v${state.version}) — restart to install`;
+        updateActionBtn.textContent = 'RESTART & INSTALL';
+        updateActionBtn.disabled = false;
+        break;
+      case 'error':
+        if (updateStatusText) updateStatusText.textContent = 'Update check failed — try again';
+        updateActionBtn.textContent = 'CHECK FOR UPDATES';
+        updateActionBtn.disabled = false;
+        break;
+      case 'idle':
+      default:
+        if (updateStatusText) updateStatusText.textContent = currentVersion ? `You're up to date (v${currentVersion})` : "You're up to date";
+        updateActionBtn.textContent = 'CHECK FOR UPDATES';
+        updateActionBtn.disabled = false;
+        break;
+    }
+  };
+
+  onUpdateState(renderState);
+
+  updateActionBtn.addEventListener('click', () => {
+    if (latestStatus === 'available') {
+      downloadUpdate();
+    } else if (latestStatus === 'ready') {
+      installUpdate();
+    } else {
+      checkForUpdate();
+    }
+  });
 }
 
 // Launch application on DOM load
