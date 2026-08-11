@@ -1,0 +1,47 @@
+const WAKE_WORD_REGEX = /^(?:hey[,]?\s+)?jarvis\b[,!.\s]*/i;
+
+export class ConversationController {
+  constructor({ wakeTimeoutMs = 8000, conversationTimeoutMs = 120000 } = {}) {
+    this.wakeTimeoutMs = wakeTimeoutMs;
+    this.conversationTimeoutMs = conversationTimeoutMs;
+    this._awaitingCommand = false;
+    this._conversationActive = false;
+  }
+
+  get isAwaitingCommand() {
+    return this._awaitingCommand;
+  }
+
+  get isConversationActive() {
+    return this._conversationActive;
+  }
+
+  handleTranscript(text) {
+    const wakeMatch = text.match(WAKE_WORD_REGEX);
+    if (!wakeMatch) {
+      return { action: 'IGNORE' };
+    }
+
+    const command = text.slice(wakeMatch[0].length).trim();
+    if (command) {
+      this._conversationActive = true;
+      return { action: 'DISPATCH_COMMAND', command, conversationStarting: true, chime: true };
+    }
+
+    this._awaitingCommand = true;
+    return { action: 'AWAIT_COMMAND' };
+  }
+
+  onWakeTimeout() {
+    this._awaitingCommand = false;
+  }
+
+  onConversationTimeout() {
+    this._conversationActive = false;
+  }
+
+  reset() {
+    this._awaitingCommand = false;
+    this._conversationActive = false;
+  }
+}
