@@ -18,6 +18,9 @@ release/
 *.db-shm
 *.db-wal
 
+# Internal planning docs (superpowers skill specs/plans — not for end users)
+docs/superpowers/
+
 # Logs
 *.log
 npm-debug.log*
