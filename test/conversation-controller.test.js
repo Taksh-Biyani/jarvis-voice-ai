@@ -36,3 +36,22 @@ test('onWakeTimeout clears awaitingCommand without starting a conversation', () 
   assert.equal(controller.isAwaitingCommand, false);
   assert.equal(controller.isConversationActive, false);
 });
+
+test('while a conversation is active, a plain command needs no wake word', () => {
+  const controller = new ConversationController();
+
+  controller.handleTranscript('Hey Jarvis, play Dota'); // starts conversation
+  const result = controller.handleTranscript('now pause it');
+
+  assert.deepEqual(result, { action: 'DISPATCH_COMMAND', command: 'now pause it', conversationStarting: false, chime: false });
+  assert.equal(controller.isConversationActive, true);
+});
+
+test('while a conversation is active, saying the wake word out of habit still works', () => {
+  const controller = new ConversationController();
+
+  controller.handleTranscript('Hey Jarvis, play Dota');
+  const result = controller.handleTranscript('Jarvis, now pause it');
+
+  assert.deepEqual(result, { action: 'DISPATCH_COMMAND', command: 'now pause it', conversationStarting: false, chime: false });
+});
