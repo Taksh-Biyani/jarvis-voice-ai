@@ -1,0 +1,656 @@
+import { VoiceEngine } from './voice-engine.js';
+import { BrowserHarness } from './harness.js';
+import { JarvisCore } from './jarvis-core.js';
+import { loadSettings, saveSettings } from './settings.js';
+
+// DOM Element References
+const micBtn = document.getElementById('micBtn');
+const transcriptDisplay = document.getElementById('transcriptDisplay');
+const textInput = document.getElementById('textInput');
+const sendBtn = document.getElementById('sendBtn');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const terminalBox = document.getElementById('terminalBox');
+const swarmList = document.getElementById('swarmList');
+const steamGamesGrid = document.getElementById('steamGamesGrid');
+const launchSteamBtn = document.getElementById('launchSteamBtn');
+const muteBtn = document.getElementById('muteBtn');
+const viewportPlaceholder = document.getElementById('viewportPlaceholder');
+const viewportFrame = document.getElementById('viewportFrame');
+const viewportTitle = document.getElementById('viewportTitle');
+const viewportExternalLink = document.getElementById('viewportExternalLink');
+const tabsOpenedCount = document.getElementById('tabsOpenedCount');
+const visualizerCanvas = document.getElementById('visualizerCanvas');
+const speechMeter = document.getElementById('speechMeter');
+const speechMeterBars = speechMeter ? Array.from(speechMeter.querySelectorAll('.speech-meter-bar')) : [];
+
+// Visualizer Canvas Context
+const ctx = visualizerCanvas ? visualizerCanvas.getContext('2d') : null;
+let animationFrameId = null;
+let meterLevel = 0; // 0..1 current displayed level, decays over time
+let meterDecayFrameId = null;
+
+// Initialize System Components
+let voiceEngine;
+let harness;
+let jarvis;
+let isMuted = false;
+
+// Wake-word state machine ("Jarvis" / "Hey Jarvis")
+const WAKE_WORD_REGEX = /^(?:hey[,]?\s+)?jarvis\b[,!.\s]*/i;
+const WAKE_TIMEOUT_MS = 8000;
+let awaitingCommand = false;
+let wakeTimeoutId = null;
+
+function initApp() {
+  // 1. Terminal logger helper
+  const addLog = ({ type = 'JARVIS', message }) => {
+    if (!terminalBox) return;
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    const timestamp = new Date().toLocaleTimeString();
+    entry.textContent = `[${timestamp}] ${message}`;
+    terminalBox.appendChild(entry);
+    terminalBox.scrollTop = terminalBox.scrollHeight;
+  };
+
+  // 2. Status updater helper
+  const updateStatus = ({ status, message }) => {
+    if (statusText) statusText.textContent = status;
+    if (statusDot) {
+      statusDot.className = 'status-dot';
+      if (status === 'SPEAKING') statusDot.classList.add('speaking');
+      if (status === 'LISTENING') statusDot.classList.add('listening');
+    }
+
+    if (message && transcriptDisplay) {
+      transcriptDisplay.textContent = message;
+    }
+  };
+
+  // 3. Harness Browser Viewport updater helper
+  const updateViewport = ({ title, url, iframeUrl, tabOpened }) => {
+    if (viewportTitle) viewportTitle.textContent = title;
+    if (viewportExternalLink) {
+      viewportExternalLink.href = url;
+      viewportExternalLink.style.display = 'inline';
+    }
+
+    if (viewportPlaceholder) viewportPlaceholder.style.display = 'none';
+    if (viewportFrame) {
+      viewportFrame.style.display = 'block';
+      try {
+        viewportFrame.src = iframeUrl || url;
+      } catch (e) {
+        console.warn("Iframe load issue", e);
+      }
+    }
+
+    if (harness && tabsOpenedCount) {
+      tabsOpenedCount.textContent = `TABS OPENED: ${harness.tabsOpened}`;
+    }
+  };
+
+  // 4. Swarm Telemetry UI Updater
+  const renderSwarmTelemetry = (agents) => {
+    if (!swarmList || !agents) return;
+    swarmList.innerHTML = '';
+    agents.forEach(agent => {
+      const card = document.createElement('div');
+      card.className = 'swarm-agent-card';
+      const statusClass = agent.status ? agent.status.toLowerCase() : 'active';
+      const lastActionHtml = agent.lastAction ? ` &bull; <span style="font-size:0.7rem; color:var(--text-dim);">${agent.lastAction}</span>` : '';
+
+      card.innerHTML = `
+        <div>
+          <div class="agent-role">${agent.role}</div>
+          <div class="agent-domain">${agent.domain}${lastActionHtml}</div>
+        </div>
+        <span class="agent-status-badge ${statusClass}">${agent.status}</span>
+      `;
+      swarmList.appendChild(card);
+    });
+  };
+
+  // 5. Instantiate Harness, Voice, & Core
+  harness = new BrowserHarness({
+    onLog: addLog,
+    onViewportUpdate: updateViewport
+  });
+
+  voiceEngine = new VoiceEngine({
+    onTranscript: ({ text, isFinal }) => {
+      if (transcriptDisplay && !awaitingCommand) transcriptDisplay.textContent = text;
+      if (!isFinal || !jarvis) return;
+
+      // Already woken up (wake word was said alone) — treat this utterance as the command.
+      if (awaitingCommand) {
+        clearTimeout(wakeTimeoutId);
+        awaitingCommand = false;
+        const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
+        jarvis.processUserInput(command);
+        return;
+      }
+
+      const wakeMatch = text.match(WAKE_WORD_REGEX);
+      if (!wakeMatch) {
+        // Not addressed to JARVIS — ignore ambient speech while passively listening.
+        return;
+      }
+
+      // Always chime the instant the wake word is heard, whether or not a
+      // command follows immediately — this is the "yes, I heard you" cue.
+      voiceEngine.playBeep(1000, 0.08, 'sine');
+
+      const command = text.slice(wakeMatch[0].length).trim();
+      if (command) {
+        // "Hey Jarvis, play Dota" — wake word + command in one breath.
+        jarvis.processUserInput(command);
+      } else {
+        // Wake word said alone — wait for the follow-up command.
+        awaitingCommand = true;
+        if (transcriptDisplay) transcriptDisplay.textContent = 'Yes, Sir? Listening for your command...';
+        wakeTimeoutId = setTimeout(() => {
+          awaitingCommand = false;
+          if (transcriptDisplay) transcriptDisplay.textContent = 'Say "Jarvis" to give a command...';
+        }, WAKE_TIMEOUT_MS);
+      }
+    },
+    onStateChange: (state) => {
+      updateStatus(state);
+      if (micBtn) {
+        if (state.status === 'LISTENING') {
+          micBtn.classList.add('active');
+        } else if (state.status === 'IDLE' || state.status === 'ERROR') {
+          micBtn.classList.remove('active');
+        }
+      }
+    },
+    onSpeechMeter: ({ active, intensity }) => {
+      if (active) pulseMeter(intensity);
+    }
+  });
+
+  jarvis = new JarvisCore(voiceEngine, harness, {
+    onLog: addLog,
+    onStatusChange: updateStatus,
+    onResponse: ({ text, actionType }) => {
+      addLog({ type: 'JARVIS', message: text });
+    },
+    onSwarmUpdate: renderSwarmTelemetry
+  });
+
+  // Render initial swarm telemetry state
+  const swarmStatus = jarvis.getSwarmStatus();
+  renderSwarmTelemetry(swarmStatus.agents);
+
+  // 6. Populate Steam Games Grid (initial — hardcoded fallbacks)
+  populateSteamGames();
+
+  // After 3s, refresh game grid in case the Steam library finished loading
+  setTimeout(() => populateSteamGames(), 3000);
+
+  // 7. Attach Steam Launch Button Handler
+  if (launchSteamBtn) {
+    launchSteamBtn.addEventListener('click', () => {
+      jarvis.processUserInput('Open Steam');
+    });
+  }
+
+  // 8. Steam Library Credential Setup Panel
+  const steamApiKeyInput = document.getElementById('steamApiKeyInput');
+  const steamIdInput = document.getElementById('steamIdInput');
+  const steamSaveBtn = document.getElementById('steamSaveBtn');
+  const steamClearBtn = document.getElementById('steamClearBtn');
+  const steamLibraryStatus = document.getElementById('steamLibraryStatus');
+
+  // Pre-fill inputs if credentials are already saved
+  if (steamApiKeyInput && jarvis.steamHarness.steamLibrary.isConfigured()) {
+    steamApiKeyInput.placeholder = '••••••••••••••••• (saved)';
+    steamIdInput.value = localStorage.getItem('jarvis_steam_id') || '';
+    steamLibraryStatus.textContent = 'Credentials saved — library will load on next command.';
+    steamLibraryStatus.style.color = 'var(--cyan-bright)';
+  }
+
+  if (steamSaveBtn) {
+    steamSaveBtn.addEventListener('click', async () => {
+      const key = steamApiKeyInput ? steamApiKeyInput.value.trim() : '';
+      const id = steamIdInput ? steamIdInput.value.trim() : '';
+
+      if (!key || !id) {
+        if (steamLibraryStatus) {
+          steamLibraryStatus.textContent = '⚠ Both API Key and Steam ID are required.';
+          steamLibraryStatus.style.color = 'var(--red-alert)';
+        }
+        return;
+      }
+
+      jarvis.steamHarness.steamLibrary.configure(key, id);
+      if (steamLibraryStatus) {
+        steamLibraryStatus.textContent = '⏳ Loading your Steam library...';
+        steamLibraryStatus.style.color = 'var(--gold-glow)';
+      }
+      steamSaveBtn.disabled = true;
+
+      try {
+        const games = await jarvis.steamHarness.steamLibrary.fetchLibrary(true);
+        if (steamLibraryStatus) {
+          steamLibraryStatus.textContent = `✅ ${games.length} games loaded from your Steam library.`;
+          steamLibraryStatus.style.color = '#39ff14';
+        }
+        addLog({ type: 'SUCCESS', message: `[STEAM LIBRARY] ${games.length} owned games indexed. Voice launch ready.` });
+        populateSteamGames(); // Refresh grid with real library
+      } catch (err) {
+        if (steamLibraryStatus) {
+          steamLibraryStatus.textContent = `❌ Error: ${err.message}`;
+          steamLibraryStatus.style.color = 'var(--red-alert)';
+        }
+      } finally {
+        steamSaveBtn.disabled = false;
+        if (steamApiKeyInput) steamApiKeyInput.value = '';
+        if (steamApiKeyInput) steamApiKeyInput.placeholder = '••••••••••••••••• (saved)';
+      }
+    });
+  }
+
+  if (steamClearBtn) {
+    steamClearBtn.addEventListener('click', () => {
+      jarvis.steamHarness.steamLibrary.clearCache();
+      localStorage.removeItem('jarvis_steam_api_key');
+      localStorage.removeItem('jarvis_steam_id');
+      if (steamApiKeyInput) { steamApiKeyInput.value = ''; steamApiKeyInput.placeholder = 'Steam Web API Key'; }
+      if (steamIdInput) steamIdInput.value = '';
+      if (steamLibraryStatus) { steamLibraryStatus.textContent = 'Not connected'; steamLibraryStatus.style.color = 'var(--text-dim)'; }
+      populateSteamGames();
+      addLog({ type: 'HARNESS', message: '[STEAM LIBRARY] Credentials and cache cleared.' });
+    });
+  }
+
+  // 8b. Settings Panel (general prefs, voice gender, sound meter, API keys)
+  initSettingsPanel();
+
+  // Voice & Mute Control Handlers
+  if (micBtn) {
+    micBtn.addEventListener('click', () => {
+      if (voiceEngine.isListening) {
+        voiceEngine.stopListening();
+        micBtn.classList.remove('active');
+        awaitingCommand = false;
+        clearTimeout(wakeTimeoutId);
+        if (transcriptDisplay) transcriptDisplay.textContent = 'Voice input paused.';
+      } else {
+        const success = voiceEngine.startListening();
+        if (success !== false) {
+          micBtn.classList.add('active');
+          if (transcriptDisplay) transcriptDisplay.textContent = 'Say "Jarvis" to give a command...';
+        }
+      }
+    });
+  }
+
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => {
+      isMuted = !isMuted;
+      if (isMuted) {
+        voiceEngine.stopSpeaking();
+        if (voiceEngine) voiceEngine.isMuted = true;
+        muteBtn.textContent = '🔇 VOICE: OFF';
+        muteBtn.style.borderColor = 'var(--red-alert)';
+        muteBtn.style.color = 'var(--red-alert)';
+      } else {
+        if (voiceEngine) voiceEngine.isMuted = false;
+        muteBtn.textContent = '🔊 VOICE: ON';
+        muteBtn.style.borderColor = 'var(--border-gold)';
+        muteBtn.style.color = 'var(--gold-glow)';
+      }
+    });
+  }
+
+  // 9. Text Input & Send Button Handlers
+  const handleManualInput = () => {
+    if (!textInput) return;
+    const val = textInput.value.trim();
+    if (val) {
+      textInput.value = '';
+      jarvis.processUserInput(val);
+    }
+  };
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', handleManualInput);
+  }
+
+  if (textInput) {
+    textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleManualInput();
+    });
+  }
+
+  // 10. Quick Action Harness Buttons
+  document.querySelectorAll('.btn-harness').forEach(btn => {
+    if (btn.id === 'muteBtn') return;
+    btn.addEventListener('click', () => {
+      const query = btn.getAttribute('data-query');
+      if (query) {
+        jarvis.processUserInput(query);
+      }
+    });
+  });
+
+  // 11. Start Arc Reactor Waveform Animation
+  if (visualizerCanvas && ctx) {
+    startVisualizerAnimation();
+
+    // The Electron window starts hidden (tray-only) and Chromium suspends
+    // requestAnimationFrame for windows that have never been shown, so the
+    // loop above may never actually get going. Force a restart the moment
+    // the window becomes visible (e.g. opened from the tray icon).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        startVisualizerAnimation();
+      }
+    });
+  }
+
+  addLog({
+    type: 'SUCCESS',
+    message: '[SWARM ONLINE] Multi-Agent Mesh active. Voice I/O, Steam Harness, & Google Automation primed.'
+  });
+
+  // 12. Auto-start passive wake-word listening — no manual mic click required.
+  // Browsers may still show a one-time microphone permission prompt.
+  const wakeStarted = voiceEngine.startListening();
+  if (wakeStarted !== false) {
+    if (micBtn) micBtn.classList.add('active');
+    if (transcriptDisplay) transcriptDisplay.textContent = 'Say "Jarvis" to give a command...';
+    addLog({ type: 'HARNESS', message: '[WAKE WORD] Passive listening active. Say "Jarvis" or "Hey Jarvis" to issue a command.' });
+  }
+}
+
+/**
+ * Populates steamGamesGrid with featured games from jarvis.steamHarness
+ */
+function populateSteamGames() {
+  if (!steamGamesGrid || !jarvis || !jarvis.steamHarness) return;
+  const games = jarvis.steamHarness.getFeaturedGames();
+  steamGamesGrid.innerHTML = '';
+
+  games.forEach(game => {
+    const card = document.createElement('div');
+    card.className = 'game-card';
+    card.setAttribute('data-game-name', game.name);
+    card.innerHTML = `
+      <div class="game-icon">${game.icon || '🎮'}</div>
+      <div class="game-info">
+        <div class="game-title">${game.name}</div>
+        <span class="game-genre">${game.genre}</span>
+      </div>
+      <button class="game-launch-btn" title="Launch ${game.name}">PLAY ▶</button>
+    `;
+    card.addEventListener('click', () => {
+      jarvis.processUserInput(`Play ${game.name}`);
+    });
+    steamGamesGrid.appendChild(card);
+  });
+}
+
+/**
+ * Renders high-tech glowing arc-reactor waveform visualizer on Canvas
+ */
+function startVisualizerAnimation() {
+  if (!visualizerCanvas || !ctx) return;
+
+  // Guard against a duplicate loop (e.g. re-triggered by visibilitychange
+  // while one is already running) rather than stacking multiple RAF chains.
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+
+  const width = visualizerCanvas.width;
+  const height = visualizerCanvas.height;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  let phase = 0;
+
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+
+    phase += 0.04;
+    const isSpeaking = voiceEngine ? voiceEngine.isSpeaking : false;
+    const isListening = voiceEngine ? voiceEngine.isListening : false;
+
+    // Glowing Central Core
+    const coreRadius = isSpeaking ? 42 + Math.sin(phase * 4) * 8 : (isListening ? 38 + Math.sin(phase * 2) * 5 : 34);
+    const grad = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, coreRadius * 1.8);
+
+    if (isSpeaking) {
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.4, '#ffaa00');
+      grad.addColorStop(1, 'rgba(255, 51, 102, 0.0)');
+    } else if (isListening) {
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.4, '#00f3ff');
+      grad.addColorStop(1, 'rgba(0, 119, 255, 0.0)');
+    } else {
+      grad.addColorStop(0, 'rgba(226, 241, 255, 0.9)');
+      grad.addColorStop(0.4, 'rgba(0, 243, 255, 0.6)');
+      grad.addColorStop(1, 'rgba(0, 119, 255, 0.0)');
+    }
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, coreRadius * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Waveform Ring
+    const points = 64;
+    const baseRadius = 85;
+    ctx.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+      const amp = isSpeaking ? 16 * Math.sin(phase * 3 + i * 0.4) : (isListening ? 10 * Math.cos(phase * 2 + i * 0.3) : 3 * Math.sin(phase + i * 0.2));
+      const r = baseRadius + amp;
+      const x = centerX + Math.cos(angle) * r;
+      const y = centerY + Math.sin(angle) * r;
+
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    ctx.strokeStyle = isSpeaking ? '#ffaa00' : (isListening ? '#00f3ff' : 'rgba(0, 243, 255, 0.5)');
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = isSpeaking ? '#ffaa00' : '#00f3ff';
+    ctx.stroke();
+
+    // Concentric Orbiting Dots
+    const dotCount = 8;
+    for (let j = 0; j < dotCount; j++) {
+      const dotAngle = phase * 0.8 + (j / dotCount) * Math.PI * 2;
+      const dotR = 115;
+      const dx = centerX + Math.cos(dotAngle) * dotR;
+      const dy = centerY + Math.sin(dotAngle) * dotR;
+
+      ctx.fillStyle = '#64f7ff';
+      ctx.beginPath();
+      ctx.arc(dx, dy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    animationFrameId = requestAnimationFrame(render);
+  }
+
+  render();
+}
+
+/**
+ * Renders the speech-output meter bars from the current meterLevel (0..1).
+ */
+function renderMeter() {
+  const litCount = Math.round(meterLevel * speechMeterBars.length);
+  speechMeterBars.forEach((bar, i) => {
+    bar.classList.toggle('lit', i < litCount);
+  });
+}
+
+/**
+ * Decays meterLevel toward 0 each frame, so a pulse from one word fades out
+ * smoothly instead of vanishing instantly at the next boundary event.
+ */
+function decayMeterLoop() {
+  meterLevel = Math.max(0, meterLevel - 0.05);
+  renderMeter();
+  if (meterLevel > 0) {
+    meterDecayFrameId = requestAnimationFrame(decayMeterLoop);
+  } else {
+    meterDecayFrameId = null;
+  }
+}
+
+/**
+ * Pulses the meter to at least `intensity` (0..1), called on each spoken
+ * word boundary from VoiceEngine's onSpeechMeter callback.
+ */
+function pulseMeter(intensity) {
+  meterLevel = Math.max(meterLevel, intensity);
+  renderMeter();
+  if (!meterDecayFrameId) {
+    meterDecayFrameId = requestAnimationFrame(decayMeterLoop);
+  }
+}
+
+/**
+ * Shows/hides the meter row per the soundMeterEnabled setting.
+ */
+function applySoundMeterVisibility(enabled) {
+  if (!speechMeter) return;
+  speechMeter.classList.toggle('hidden', !enabled);
+}
+
+/**
+ * Wires up the Settings modal: open/close, loading current values on open,
+ * saving on change, and applying live effects (voice re-pick, meter
+ * visibility, API key hot-update) without requiring a reload.
+ */
+function initSettingsPanel() {
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const settingsBackdrop = document.getElementById('settingsBackdrop');
+  const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  const openTabToggle = document.getElementById('openTabToggle');
+  const voiceGenderMale = document.getElementById('voiceGenderMale');
+  const voiceGenderFemale = document.getElementById('voiceGenderFemale');
+  const soundMeterToggle = document.getElementById('soundMeterToggle');
+  const useGroqToggle = document.getElementById('useGroqToggle');
+  const openrouterKeyInput = document.getElementById('openrouterKeyInput');
+  const groqKeyInput = document.getElementById('groqKeyInput');
+  const deepgramKeyInput = document.getElementById('deepgramKeyInput');
+  const apiKeysSaveBtn = document.getElementById('apiKeysSaveBtn');
+  const apiKeysStatus = document.getElementById('apiKeysStatus');
+
+  if (!settingsBtn || !settingsModal) return;
+
+  const settings = loadSettings();
+  if (openTabToggle) openTabToggle.checked = settings.openTabOnSearch;
+  if (voiceGenderMale) voiceGenderMale.checked = settings.voiceGender === 'male';
+  if (voiceGenderFemale) voiceGenderFemale.checked = settings.voiceGender === 'female';
+  if (soundMeterToggle) soundMeterToggle.checked = settings.soundMeterEnabled;
+  if (useGroqToggle) useGroqToggle.checked = settings.useGroq;
+  applySoundMeterVisibility(settings.soundMeterEnabled);
+
+  if (openrouterKeyInput && localStorage.getItem('jarvis_openrouter_api_key')) {
+    openrouterKeyInput.placeholder = '••••••••••••••••• (saved)';
+  }
+  if (groqKeyInput && localStorage.getItem('jarvis_groq_api_key')) {
+    groqKeyInput.placeholder = '••••••••••••••••• (saved)';
+  }
+  if (deepgramKeyInput && localStorage.getItem('jarvis_deepgram_api_key')) {
+    deepgramKeyInput.placeholder = '••••••••••••••••• (saved)';
+  }
+
+  const openModal = () => settingsModal.classList.add('open');
+  const closeModal = () => settingsModal.classList.remove('open');
+
+  settingsBtn.addEventListener('click', openModal);
+  if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeModal);
+  if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeModal);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && settingsModal.classList.contains('open')) closeModal();
+  });
+
+  if (openTabToggle) {
+    openTabToggle.addEventListener('change', () => {
+      saveSettings({ openTabOnSearch: openTabToggle.checked });
+    });
+  }
+
+  const applyVoiceGender = (gender) => {
+    saveSettings({ voiceGender: gender });
+    if (voiceEngine) voiceEngine.applyVoicePreference();
+  };
+  if (voiceGenderMale) {
+    voiceGenderMale.addEventListener('change', () => {
+      if (voiceGenderMale.checked) applyVoiceGender('male');
+    });
+  }
+  if (voiceGenderFemale) {
+    voiceGenderFemale.addEventListener('change', () => {
+      if (voiceGenderFemale.checked) applyVoiceGender('female');
+    });
+  }
+
+  if (soundMeterToggle) {
+    soundMeterToggle.addEventListener('change', () => {
+      saveSettings({ soundMeterEnabled: soundMeterToggle.checked });
+      applySoundMeterVisibility(soundMeterToggle.checked);
+    });
+  }
+
+  if (useGroqToggle) {
+    useGroqToggle.addEventListener('change', () => {
+      saveSettings({ useGroq: useGroqToggle.checked });
+    });
+  }
+
+  if (apiKeysSaveBtn) {
+    apiKeysSaveBtn.addEventListener('click', () => {
+      const openrouterKey = openrouterKeyInput ? openrouterKeyInput.value.trim() : '';
+      const groqKey = groqKeyInput ? groqKeyInput.value.trim() : '';
+      const deepgramKey = deepgramKeyInput ? deepgramKeyInput.value.trim() : '';
+
+      if (openrouterKey) {
+        localStorage.setItem('jarvis_openrouter_api_key', openrouterKey);
+        if (jarvis) jarvis.openRouter.apiKey = openrouterKey;
+        openrouterKeyInput.value = '';
+        openrouterKeyInput.placeholder = '••••••••••••••••• (saved)';
+      }
+      if (groqKey) {
+        localStorage.setItem('jarvis_groq_api_key', groqKey);
+        if (jarvis) jarvis.groq.apiKey = groqKey;
+        groqKeyInput.value = '';
+        groqKeyInput.placeholder = '••••••••••••••••• (saved)';
+      }
+      if (deepgramKey) {
+        localStorage.setItem('jarvis_deepgram_api_key', deepgramKey);
+        if (voiceEngine) voiceEngine.deepgramApiKey = deepgramKey;
+        deepgramKeyInput.value = '';
+        deepgramKeyInput.placeholder = '••••••••••••••••• (saved)';
+      }
+
+      if (apiKeysStatus) {
+        if (openrouterKey || groqKey || deepgramKey) {
+          apiKeysStatus.textContent = '✅ Saved.';
+          apiKeysStatus.style.color = '#39ff14';
+        } else {
+          apiKeysStatus.textContent = 'Enter at least one key to save.';
+          apiKeysStatus.style.color = 'var(--text-dim)';
+        }
+      }
+    });
+  }
+}
+
+// Launch application on DOM load
+window.addEventListener('DOMContentLoaded', initApp);

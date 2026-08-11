@@ -1,0 +1,27 @@
+# Secrets — never commit real credentials
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+release/
+
+# Local tool/agent state (machine-specific, not part of the project)
+.claude/
+.claude-flow/
+.swarm/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS cruft
+.DS_Store
+Thumbs.db
