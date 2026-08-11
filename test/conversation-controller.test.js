@@ -115,3 +115,20 @@ test('ambient speech with no wake word is ignored while idle', () => {
   assert.equal(controller.isAwaitingCommand, false);
   assert.equal(controller.isConversationActive, false);
 });
+
+test('onConversationTimeout ends an active conversation', () => {
+  const controller = new ConversationController();
+  controller.handleTranscript('Hey Jarvis, play Dota');
+
+  controller.onConversationTimeout();
+
+  assert.equal(controller.isConversationActive, false);
+});
+
+test('onConversationTimeout is a no-op when no conversation is active', () => {
+  const controller = new ConversationController();
+
+  controller.onConversationTimeout();
+
+  assert.equal(controller.isConversationActive, false);
+});
