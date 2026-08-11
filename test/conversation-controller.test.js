@@ -24,3 +24,15 @@ test('wake word alone awaits a command, then the next utterance dispatches it', 
   assert.equal(controller.isAwaitingCommand, false);
   assert.equal(controller.isConversationActive, true);
 });
+
+test('onWakeTimeout clears awaitingCommand without starting a conversation', () => {
+  const controller = new ConversationController();
+
+  controller.handleTranscript('Jarvis');
+  assert.equal(controller.isAwaitingCommand, true);
+
+  controller.onWakeTimeout();
+
+  assert.equal(controller.isAwaitingCommand, false);
+  assert.equal(controller.isConversationActive, false);
+});
