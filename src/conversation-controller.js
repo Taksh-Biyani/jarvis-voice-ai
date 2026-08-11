@@ -17,6 +17,13 @@ export class ConversationController {
   }
 
   handleTranscript(text) {
+    if (this._awaitingCommand) {
+      this._awaitingCommand = false;
+      this._conversationActive = true;
+      const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
+      return { action: 'DISPATCH_COMMAND', command, conversationStarting: true, chime: false };
+    }
+
     const wakeMatch = text.match(WAKE_WORD_REGEX);
     if (!wakeMatch) {
       return { action: 'IGNORE' };

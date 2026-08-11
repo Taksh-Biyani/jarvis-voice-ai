@@ -11,3 +11,16 @@ test('wake word + command in one breath dispatches immediately and starts a conv
   assert.equal(controller.isConversationActive, true);
   assert.equal(controller.isAwaitingCommand, false);
 });
+
+test('wake word alone awaits a command, then the next utterance dispatches it', () => {
+  const controller = new ConversationController();
+
+  const first = controller.handleTranscript('Jarvis');
+  assert.deepEqual(first, { action: 'AWAIT_COMMAND' });
+  assert.equal(controller.isAwaitingCommand, true);
+
+  const second = controller.handleTranscript('what time is it');
+  assert.deepEqual(second, { action: 'DISPATCH_COMMAND', command: 'what time is it', conversationStarting: true, chime: false });
+  assert.equal(controller.isAwaitingCommand, false);
+  assert.equal(controller.isConversationActive, true);
+});
