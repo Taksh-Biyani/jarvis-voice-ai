@@ -88,6 +88,16 @@ test('a stop phrase embedded mid-sentence does not end the conversation', () => 
   assert.equal(controller.isConversationActive, true);
 });
 
+test('a stop phrase with a curly (typographic) apostrophe still ends the conversation', () => {
+  const controller = new ConversationController();
+  controller.handleTranscript('Hey Jarvis, play Dota');
+
+  const result = controller.handleTranscript("that's all");
+
+  assert.deepEqual(result, { action: 'END_CONVERSATION' });
+  assert.equal(controller.isConversationActive, false);
+});
+
 test('stop phrases are ignored while no conversation is active', () => {
   const controller = new ConversationController();
 
