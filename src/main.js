@@ -559,6 +559,8 @@ function initSettingsPanel() {
   const groqKeyInput = document.getElementById('groqKeyInput');
   const deepgramKeyInput = document.getElementById('deepgramKeyInput');
   const wolframKeyInput = document.getElementById('wolframKeyInput');
+  const spotifyClientIdInput = document.getElementById('spotifyClientIdInput');
+  const spotifyClientSecretInput = document.getElementById('spotifyClientSecretInput');
   const apiKeysSaveBtn = document.getElementById('apiKeysSaveBtn');
   const apiKeysStatus = document.getElementById('apiKeysStatus');
 
@@ -583,6 +585,12 @@ function initSettingsPanel() {
   }
   if (wolframKeyInput && localStorage.getItem('jarvis_wolfram_app_id')) {
     wolframKeyInput.placeholder = '••••••••••••••••• (saved)';
+  }
+  if (spotifyClientIdInput && localStorage.getItem('jarvis_spotify_client_id')) {
+    spotifyClientIdInput.placeholder = '••••••••••••••••• (saved)';
+  }
+  if (spotifyClientSecretInput && localStorage.getItem('jarvis_spotify_client_secret')) {
+    spotifyClientSecretInput.placeholder = '••••••••••••••••• (saved)';
   }
 
   const openModal = () => settingsModal.classList.add('open');
@@ -635,6 +643,8 @@ function initSettingsPanel() {
       const groqKey = groqKeyInput ? groqKeyInput.value.trim() : '';
       const deepgramKey = deepgramKeyInput ? deepgramKeyInput.value.trim() : '';
       const wolframAppId = wolframKeyInput ? wolframKeyInput.value.trim() : '';
+      const spotifyClientId = spotifyClientIdInput ? spotifyClientIdInput.value.trim() : '';
+      const spotifyClientSecret = spotifyClientSecretInput ? spotifyClientSecretInput.value.trim() : '';
 
       if (openrouterKey) {
         localStorage.setItem('jarvis_openrouter_api_key', openrouterKey);
@@ -661,9 +671,21 @@ function initSettingsPanel() {
         wolframKeyInput.value = '';
         wolframKeyInput.placeholder = '••••••••••••••••• (saved)';
       }
+      if (spotifyClientId) {
+        localStorage.setItem('jarvis_spotify_client_id', spotifyClientId);
+        if (jarvis) jarvis.spotifyClientId = spotifyClientId;
+        spotifyClientIdInput.value = '';
+        spotifyClientIdInput.placeholder = '••••••••••••••••• (saved)';
+      }
+      if (spotifyClientSecret) {
+        localStorage.setItem('jarvis_spotify_client_secret', spotifyClientSecret);
+        if (jarvis) jarvis.spotifyClientSecret = spotifyClientSecret;
+        spotifyClientSecretInput.value = '';
+        spotifyClientSecretInput.placeholder = '••••••••••••••••• (saved)';
+      }
 
       if (apiKeysStatus) {
-        if (openrouterKey || groqKey || deepgramKey || wolframAppId) {
+        if (openrouterKey || groqKey || deepgramKey || wolframAppId || spotifyClientId || spotifyClientSecret) {
           apiKeysStatus.textContent = '✅ Saved.';
           apiKeysStatus.style.color = '#39ff14';
         } else {

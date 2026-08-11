@@ -256,6 +256,73 @@ function registerWolframIpc() {
   });
 }
 
+function registerSpotifyIpc() {
+  // Client Credentials token exchange requires POSTing a client secret —
+  // this must stay in the main process rather than going through the public
+  // CORS proxy Steam/Wolfram use in a plain browser tab, since that proxy is
+  // fine for a public app ID but not for a real secret.
+  ipcMain.handle('spotify:resolve-track', (event, { clientId, clientSecret, query }) => {
+    return new Promise((resolve, reject) => {
+      const tokenBody = 'grant_type=client_credentials';
+      const authHeader = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+      const tokenReq = https.request('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(tokenBody)
+        }
+      }, (tokenRes) => {
+        let tokenData = '';
+        tokenRes.on('data', (chunk) => { tokenData += chunk; });
+        tokenRes.on('end', () => {
+          if (tokenRes.statusCode !== 200) {
+            reject(new Error(`Spotify token HTTP ${tokenRes.statusCode}`));
+            return;
+          }
+
+          let accessToken;
+          try {
+            accessToken = JSON.parse(tokenData).access_token;
+          } catch (e) {
+            reject(new Error('Invalid Spotify token response'));
+            return;
+          }
+
+          const searchUrl = `https://api.spotify.com/v1/search?type=track&limit=1&q=${encodeURIComponent(query)}`;
+          https.get(searchUrl, { headers: { Authorization: `Bearer ${accessToken}` } }, (searchRes) => {
+            let searchData = '';
+            searchRes.on('data', (chunk) => { searchData += chunk; });
+            searchRes.on('end', () => {
+              if (searchRes.statusCode !== 200) {
+                reject(new Error(`Spotify search HTTP ${searchRes.statusCode}`));
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(searchData);
+                const track = parsed.tracks?.items?.[0];
+                resolve(track ? {
+                  uri: track.uri,
+                  name: track.name,
+                  artist: track.artists?.[0]?.name || ''
+                } : null);
+              } catch (e) {
+                reject(new Error('Invalid Spotify search response'));
+              }
+            });
+          }).on('error', reject);
+        });
+      });
+
+      tokenReq.on('error', reject);
+      tokenReq.write(tokenBody);
+      tokenReq.end();
+    });
+  });
+}
+
 function sendUpdateState(state) {
   if (mainWindow) mainWindow.webContents.send('update:state', state);
 }
@@ -339,6 +406,7 @@ app.whenReady().then(() => {
   registerSteamIpc();
   registerMicIpc();
   registerWolframIpc();
+  registerSpotifyIpc();
   registerUpdaterEvents();
   registerUpdateIpc();
   createWindow();

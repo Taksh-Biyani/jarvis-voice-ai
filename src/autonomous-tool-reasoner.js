@@ -16,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -29,7 +29,38 @@ export class AutonomousToolReasoner {
 
     const text = input.trim().toLowerCase();
 
-    // 1. Check for gaming & Steam launch intents (implicit & explicit)
+    // 1. Check for Spotify commands — requires the literal word "spotify",
+    // so it never competes with the bare "play X" -> Steam game-launch
+    // fallback below (Steam is the default for "play"; Spotify must say so).
+    // Checked before the gaming section since it's an unambiguous, explicit
+    // trigger rather than a heuristic guess.
+    if (text.includes('spotify')) {
+      const playOnSpotify = text.match(/play\s+(.+?)\s+on\s+spotify/i)
+        || text.match(/spotify\s+play\s+(.+)/i)
+        || text.match(/play\s+(.+?)\s+(?:in|via)\s+spotify/i);
+
+      if (playOnSpotify && playOnSpotify[1]) {
+        return {
+          shouldCallTool: true,
+          toolName: 'SPOTIFY_PLAY_SONG',
+          confidence: 0.93,
+          params: { query: playOnSpotify[1].trim() },
+          reasoning: `Autonomous reasoner detected intent to play "${playOnSpotify[1].trim()}" via Spotify.`
+        };
+      }
+
+      if (text.includes('open') || text.includes('launch') || text.includes('lunch') || text.includes('start') || text === 'spotify') {
+        return {
+          shouldCallTool: true,
+          toolName: 'SPOTIFY_OPEN_CLIENT',
+          confidence: 0.93,
+          params: {},
+          reasoning: "Autonomous reasoner identified intent to open the Spotify application."
+        };
+      }
+    }
+
+    // 2. Check for gaming & Steam launch intents (implicit & explicit)
     const gamingKeywords = ['play', 'game', 'gaming', 'steam', 'csgo', 'cs2', 'dota', 'cyberpunk', 'elden ring', 'gta', 'apex', 'tf2', 'helldivers', 'pubg', 'rust', 'baldurs gate'];
     const gamingIntentDetected = gamingKeywords.some(kw => text.includes(kw));
 
@@ -85,7 +116,7 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 1b. Broad launch-verb fallback — covers "launch/start/run/open <any title>"
+    // 2b. Broad launch-verb fallback — covers "launch/start/run/open <any title>"
     // even when the sentence has no recognized gaming keyword (e.g. a game only
     // present in the user's real Steam library, like "launch Cookie Clicker").
     // Delegates the actual name resolution to SteamHarness (library -> dict -> store search).
@@ -105,7 +136,7 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 2. Check for a model-tier switch command ("switch mode to high",
+    // 3. Check for a model-tier switch command ("switch mode to high",
     // "set mode to max") — checked early, before search/math, since it's an
     // explicit system command rather than something to look up or compute.
     const tierMatch = text.match(/\b(?:switch|set|change)\s+(?:mode|model|tier)\s+to\s+(\w+)\b/i)
@@ -126,7 +157,7 @@ export class AutonomousToolReasoner {
       // mode to insane") — fall through rather than guess.
     }
 
-    // 3. Check for math queries (arithmetic through high-level math) —
+    // 4. Check for math queries (arithmetic through high-level math) —
     // checked before the web-search heuristics below, since e.g. "what is 5
     // plus 3" would otherwise match the "what is" search starter. Scoped
     // deliberately to math phrasing only, not a catch-all for trivia.
@@ -151,7 +182,7 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 4. Check for real-time Web Search / Info retrieval intents
+    // 5. Check for real-time Web Search / Info retrieval intents
     const searchStarters = [
       'what is', 'what are', 'who is', 'who was', 'where is', 'where are',
       'how to', 'how does', 'why is', 'why do', 'tell me about', 'find out',
@@ -179,7 +210,7 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 5. Direct Website Intent
+    // 6. Direct Website Intent
     const siteMap = ['youtube', 'github', 'reddit', 'twitter', 'wikipedia', 'amazon', 'gmail', 'maps'];
     for (const site of siteMap) {
       if (text.includes(site) && (text.includes('open') || text.includes('go to') || text.includes('show'))) {
@@ -193,7 +224,7 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 6. Default Conversational / System query
+    // 7. Default Conversational / System query
     return {
       shouldCallTool: false,
       toolName: 'CONVERSATIONAL',

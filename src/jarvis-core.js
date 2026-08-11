@@ -1,10 +1,11 @@
 /**
  * JARVIS Core AI Brain & Multi-Agent Swarm Orchestrator
  * Coordinates voice interaction, OpenRouter LLM intelligence, autonomous tool decision engine,
- * Google Search browser harness, Steam game launcher harness, and swarm telemetry.
+ * Google Search browser harness, Steam game launcher harness, Spotify harness, and swarm telemetry.
  */
 
 import { SteamHarness } from './steam-harness.js';
+import { SpotifyHarness } from './spotify-harness.js';
 import { AutonomousToolReasoner } from './autonomous-tool-reasoner.js';
 import { OpenRouterClient } from './openrouter-client.js';
 import { GroqClient } from './groq-client.js';
@@ -63,6 +64,20 @@ export class JarvisCore {
       onLog: (logData) => this.onLog(logData)
     });
 
+    // Spotify credentials are optional — without them, playSong() falls back
+    // to opening Spotify pre-searched instead of resolving+autoplaying the
+    // exact track.
+    this.spotifyClientId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_ID)
+      || localStorage.getItem('jarvis_spotify_client_id')
+      || '';
+    this.spotifyClientSecret = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_SECRET)
+      || localStorage.getItem('jarvis_spotify_client_secret')
+      || '';
+
+    this.spotifyHarness = new SpotifyHarness({
+      onLog: (logData) => this.onLog(logData)
+    });
+
     this.toolReasoner = new AutonomousToolReasoner({
       onLog: (logData) => this.onLog(logData)
     });
@@ -79,17 +94,19 @@ export class JarvisCore {
       { id: "agent-3", role: "Search Harness Lead", domain: "Browser Automation", status: "ACTIVE", calls: 0, lastAction: "Google Harness Primed" },
       { id: "agent-4", role: "Steam Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Steam Protocol Ready" },
       { id: "agent-5", role: "Autonomous Tool Reasoner", domain: "Intent Reasoning", status: "ACTIVE", calls: 0, lastAction: "Proactive Classifier Active" },
-      { id: "agent-6", role: "OpenRouter LLM Intelligence", domain: "Neural Brain", status: "ACTIVE", calls: 0, lastAction: "OpenRouter Connected" }
+      { id: "agent-6", role: "OpenRouter LLM Intelligence", domain: "Neural Brain", status: "ACTIVE", calls: 0, lastAction: "OpenRouter Connected" },
+      { id: "agent-7", role: "Spotify Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Spotify Protocol Ready" }
     ];
 
     // Local Conversational Knowledge Base Fallbacks
     this.knowledgeBase = {
-      "who are you": "I am JARVIS, your Just A Rather Very Intelligent System. Powered by OpenRouter AI intelligence and multi-agent swarm architecture, I am equipped with voice synthesis, Google Search automation, desktop Steam app and game launcher, and autonomous tool calling capabilities.",
-      "what can you do": "I can engage in live voice conversations using OpenRouter LLMs, answer your questions, autonomously perform Google searches, launch Steam, open and play games like Counter-Strike 2, Dota 2, or Cyberpunk 2077, open websites, and execute complex multi-agent tasks.",
+      "who are you": "I am JARVIS, your Just A Rather Very Intelligent System. Powered by OpenRouter AI intelligence and multi-agent swarm architecture, I am equipped with voice synthesis, Google Search automation, desktop Steam and Spotify launchers, and autonomous tool calling capabilities.",
+      "what can you do": "I can engage in live voice conversations using OpenRouter LLMs, answer your questions, autonomously perform Google searches, launch Steam, open and play games like Counter-Strike 2, Dota 2, or Cyberpunk 2077, open Spotify or play a specific song, open websites, and execute complex multi-agent tasks.",
       "hello": "Hello Sir. All systems are operational. OpenRouter network active. How may I assist you today?",
       "hi": "Greetings Sir. OpenRouter neural link connected. Ready for your voice or manual commands.",
-      "status": "All core modules online. OpenRouter LLM active. Voice synthesis active. Speech recognition online. Google harness standby. Steam protocol handler ready. 6-agent swarm operational.",
+      "status": "All core modules online. OpenRouter LLM active. Voice synthesis active. Speech recognition online. Google harness standby. Steam and Spotify protocol handlers ready. 7-agent swarm operational.",
       "steam": "Steam launcher harness is ready. I can open the Steam desktop client or launch any of your installed games directly.",
+      "spotify": "Spotify harness is ready. I can open the Spotify desktop client, or play a specific song directly if you say \"play <song> on spotify\".",
       "time": () => `The current local time is ${new Date().toLocaleTimeString()}.`,
       "date": () => `Today is ${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`,
       "creator": "I was crafted by your AI pair programmer utilizing multi-agent swarm architecture and high-performance Web APIs."
@@ -183,7 +200,44 @@ export class JarvisCore {
       return;
     }
 
-    // 4. Handle Model-Tier Switch Commands
+    // 4. Handle Spotify Commands
+    if (decision.toolName === 'SPOTIFY_OPEN_CLIENT') {
+      this._updateAgentState("agent-7", "EXECUTING", "Opening Spotify Application");
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = this.spotifyHarness.openApp();
+      const spokenResponse = result.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'SPOTIFY_OPEN_CLIENT',
+        data: result
+      });
+
+      this._updateAgentState("agent-7", "ACTIVE", "Spotify app opened");
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    if (decision.toolName === 'SPOTIFY_PLAY_SONG') {
+      this._updateAgentState("agent-7", "EXECUTING", `Playing on Spotify: ${decision.params.query}`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = await this.spotifyHarness.playSong(decision.params.query, this.spotifyClientId, this.spotifyClientSecret);
+      const spokenResponse = result.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'SPOTIFY_PLAY_SONG',
+        data: result
+      });
+
+      this._updateAgentState("agent-7", "ACTIVE", result.trackName ? `Playing ${result.trackName}` : `Searched Spotify for "${decision.params.query}"`);
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 5. Handle Model-Tier Switch Commands
     if (decision.toolName === 'SET_MODEL_TIER') {
       const tier = MODEL_TIERS[decision.params.tier];
       const groqApiKey = this.groq.apiKey;
@@ -207,7 +261,7 @@ export class JarvisCore {
       return;
     }
 
-    // 5. Handle Math Queries via WolframAlpha
+    // 6. Handle Math Queries via WolframAlpha
     if (decision.toolName === 'MATH_QUERY') {
       this._updateAgentState("agent-3", "COMPUTING", `Solving: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
@@ -241,7 +295,7 @@ export class JarvisCore {
       return;
     }
 
-    // 6. Handle Google Search Commands (Explicit or Autonomous)
+    // 7. Handle Google Search Commands (Explicit or Autonomous)
     if (decision.toolName === 'GOOGLE_SEARCH') {
       this._updateAgentState("agent-3", "SEARCHING", `Querying: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
@@ -281,7 +335,7 @@ export class JarvisCore {
       return;
     }
 
-    // 7. Handle Direct Website Navigation
+    // 8. Handle Direct Website Navigation
     if (decision.toolName === 'OPEN_SITE') {
       this._updateAgentState("agent-3", "EXECUTING", `Navigating to website: ${decision.params.siteName}`);
       this.voiceEngine.playSearchLaunchSound();
@@ -300,7 +354,7 @@ export class JarvisCore {
       return;
     }
 
-    // 8. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
+    // 9. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
     this._updateAgentState("agent-6", "THINKING", "Querying OpenRouter LLM API...");
 
     let answerText = await this._chatWithActiveLLM(input, this.conversationHistory);

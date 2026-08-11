@@ -240,12 +240,16 @@
           <a href="https://console.deepgram.com" target="_blank">Get a Deepgram key</a>
           (optional, improves speech recognition) ·
           <a href="https://products.wolframalpha.com/api" target="_blank">Get a WolframAlpha AppID</a>
-          (optional, grounds math answers in a real computation)
+          (optional, grounds math answers in a real computation) ·
+          <a href="https://developer.spotify.com/dashboard" target="_blank">Get Spotify Client ID/Secret</a>
+          (optional, lets JARVIS play the exact song instead of just opening search)
         </div>
         <input type="password" id="openrouterKeyInput" class="steam-input" placeholder="OpenRouter API Key" autocomplete="off" />
         <input type="password" id="groqKeyInput" class="steam-input" placeholder="Groq API Key (optional, get one at console.groq.com/keys)" autocomplete="off" />
         <input type="password" id="deepgramKeyInput" class="steam-input" placeholder="Deepgram API Key (optional)" autocomplete="off" />
         <input type="password" id="wolframKeyInput" class="steam-input" placeholder="WolframAlpha AppID (optional, get one free at products.wolframalpha.com/api)" autocomplete="off" />
+        <input type="password" id="spotifyClientIdInput" class="steam-input" placeholder="Spotify Client ID (optional, developer.spotify.com/dashboard)" autocomplete="off" />
+        <input type="password" id="spotifyClientSecretInput" class="steam-input" placeholder="Spotify Client Secret (optional)" autocomplete="off" />
         <div class="settings-hint">Restart JARVIS after adding/changing the Deepgram key to activate it.</div>
         <button class="btn-steam-save" id="apiKeysSaveBtn">SAVE KEYS</button>
         <div class="steam-library-status" id="apiKeysStatus"></div>
