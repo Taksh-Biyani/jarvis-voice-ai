@@ -132,3 +132,23 @@ test('onConversationTimeout is a no-op when no conversation is active', () => {
 
   assert.equal(controller.isConversationActive, false);
 });
+
+test('reset clears an active conversation', () => {
+  const controller = new ConversationController();
+  controller.handleTranscript('Hey Jarvis, play Dota');
+
+  controller.reset();
+
+  assert.equal(controller.isConversationActive, false);
+  assert.equal(controller.isAwaitingCommand, false);
+});
+
+test('reset clears an in-progress await-command window', () => {
+  const controller = new ConversationController();
+  controller.handleTranscript('Jarvis');
+
+  controller.reset();
+
+  assert.equal(controller.isAwaitingCommand, false);
+  assert.equal(controller.isConversationActive, false);
+});
