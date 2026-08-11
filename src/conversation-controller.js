@@ -1,4 +1,6 @@
 const WAKE_WORD_REGEX = /^(?:hey[,]?\s+)?jarvis\b[,!.\s]*/i;
+const STOP_PHRASE_REGEX =
+  /^(?:(?:hey[,]?\s+)?jarvis[,!.\s]*)?(?:stop conversation|end conversation|that'?s all|goodbye jarvis)[.!]?\s*$/i;
 
 export class ConversationController {
   constructor({ wakeTimeoutMs = 8000, conversationTimeoutMs = 120000 } = {}) {
@@ -18,6 +20,10 @@ export class ConversationController {
 
   handleTranscript(text) {
     if (this._conversationActive) {
+      if (STOP_PHRASE_REGEX.test(text.trim())) {
+        this._conversationActive = false;
+        return { action: 'END_CONVERSATION' };
+      }
       const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
       return { action: 'DISPATCH_COMMAND', command, conversationStarting: false, chime: false };
     }

@@ -55,3 +55,43 @@ test('while a conversation is active, saying the wake word out of habit still wo
 
   assert.deepEqual(result, { action: 'DISPATCH_COMMAND', command: 'now pause it', conversationStarting: false, chime: false });
 });
+
+test('stop phrases end an active conversation', () => {
+  const phrases = [
+    'stop conversation',
+    'end conversation',
+    "that's all",
+    'thats all',
+    'goodbye jarvis',
+    "Jarvis, that's all",
+    'Hey Jarvis, stop conversation'
+  ];
+
+  for (const phrase of phrases) {
+    const controller = new ConversationController();
+    controller.handleTranscript('Hey Jarvis, play Dota'); // starts conversation
+
+    const result = controller.handleTranscript(phrase);
+
+    assert.deepEqual(result, { action: 'END_CONVERSATION' }, `"${phrase}" should end the conversation`);
+    assert.equal(controller.isConversationActive, false, `"${phrase}" should clear isConversationActive`);
+  }
+});
+
+test('a stop phrase embedded mid-sentence does not end the conversation', () => {
+  const controller = new ConversationController();
+  controller.handleTranscript('Hey Jarvis, play Dota');
+
+  const result = controller.handleTranscript("search for that's all folks bugs bunny");
+
+  assert.deepEqual(result, { action: 'DISPATCH_COMMAND', command: "search for that's all folks bugs bunny", conversationStarting: false, chime: false });
+  assert.equal(controller.isConversationActive, true);
+});
+
+test('stop phrases are ignored while no conversation is active', () => {
+  const controller = new ConversationController();
+
+  const result = controller.handleTranscript('stop conversation');
+
+  assert.deepEqual(result, { action: 'IGNORE' });
+});
