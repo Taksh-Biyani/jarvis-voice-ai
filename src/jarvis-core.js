@@ -106,7 +106,7 @@ export class JarvisCore {
       "hi": "Greetings Sir. OpenRouter neural link connected. Ready for your voice or manual commands.",
       "status": "All core modules online. OpenRouter LLM active. Voice synthesis active. Speech recognition online. Google harness standby. Steam and Spotify protocol handlers ready. 7-agent swarm operational.",
       "steam": "Steam launcher harness is ready. I can open the Steam desktop client or launch any of your installed games directly.",
-      "spotify": "Spotify harness is ready. I can open the Spotify desktop client, or play a specific song directly if you say \"play <song> on spotify\".",
+      "spotify": "Spotify harness is ready. I can open the Spotify desktop client, play a specific song if you say \"play <song> on spotify\", or, if your Spotify account is connected in Settings, play your own playlists and albums by name and your Liked Songs.",
       "time": () => `The current local time is ${new Date().toLocaleTimeString()}.`,
       "date": () => `Today is ${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`,
       "creator": "I was crafted by your AI pair programmer utilizing multi-agent swarm architecture and high-performance Web APIs."
@@ -237,6 +237,25 @@ export class JarvisCore {
       return;
     }
 
+    if (decision.toolName === 'SPOTIFY_PLAY_LIBRARY') {
+      const { kind, query } = decision.params;
+      this._updateAgentState("agent-7", "EXECUTING", kind === 'liked' ? 'Opening Liked Songs' : `Playing ${kind}: ${query}`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = await this.spotifyHarness.playFromLibrary({ kind, query }, this.spotifyClientId, this.spotifyClientSecret);
+      const spokenResponse = result.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'SPOTIFY_PLAY_LIBRARY',
+        data: result
+      });
+
+      this._updateAgentState("agent-7", "ACTIVE", result.matchedName ? `Playing ${result.matchedName}` : `Searched Spotify for "${query}"`);
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
     // 5. Handle Model-Tier Switch Commands
     if (decision.toolName === 'SET_MODEL_TIER') {
       const tier = MODEL_TIERS[decision.params.tier];
@@ -297,6 +316,38 @@ export class JarvisCore {
 
     // 7. Handle Google Search Commands (Explicit or Autonomous)
     if (decision.toolName === 'GOOGLE_SEARCH') {
+      // High/Ultra tiers are the larger, more capable Groq models — the
+      // point of stepping up is to lean on that model's own knowledge
+      // instead of paying the latency/noise cost of a live web search, so
+      // skip the search grounding step entirely at those tiers. (Note:
+      // Ultra runs groq/compound, Groq's own agentic model that can invoke
+      // web search server-side on its own initiative regardless of this
+      // flag — that's outside JARVIS's control.)
+      if (this._prefersOwnKnowledge()) {
+        this._updateAgentState("agent-3", "THINKING", `Answering from model knowledge: "${decision.params.query}"`);
+        this.onLog({
+          type: 'HARNESS',
+          message: `[TIER: ${MODEL_TIERS[this.groq.currentTier].label}] Skipping live web search — answering from the model's own knowledge.`
+        });
+
+        const llmAnswer = await this._chatWithActiveLLM(
+          `Answer this question using your own knowledge, as JARVIS, in 2-3 sentences. Do not say you're searching or mention any browser. If you're not confident of the answer, say so honestly instead of guessing: ${decision.params.query}`,
+          this.conversationHistory
+        );
+        const spokenResponse = llmAnswer || `I don't have a confident answer to that from memory alone, Sir.`;
+
+        this.onResponse({
+          text: spokenResponse,
+          actionType: 'GOOGLE_SEARCH',
+          data: { query: decision.params.query, skippedWebSearch: true, tier: this.groq.currentTier }
+        });
+
+        this._updateAgentState("agent-3", "ACTIVE", `Answered from knowledge: "${decision.params.query}"`);
+        this._pushHistory(input, spokenResponse);
+        await this.voiceEngine.speak(spokenResponse);
+        return;
+      }
+
       this._updateAgentState("agent-3", "SEARCHING", `Querying: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
 
@@ -409,6 +460,18 @@ export class JarvisCore {
    * error), falls through to OpenRouter — which itself falls through to the
    * local knowledge base in processUserInput if it also returns nothing.
    */
+  /**
+   * True when the active LLM path would actually be Groq at High/Ultra
+   * tier — mirrors the same preferGroq check _chatWithActiveLLM uses, so
+   * this doesn't fire based on a tier setting that isn't even in effect
+   * (e.g. useGroq off with an OpenRouter key present).
+   */
+  _prefersOwnKnowledge() {
+    const tier = this.groq.currentTier;
+    if (tier !== 'high' && tier !== 'ultra') return false;
+    return loadSettings().useGroq || !this.openRouter.apiKey;
+  }
+
   async _chatWithActiveLLM(userInput, context) {
     // Prefer Groq when explicitly switched on, or automatically when
     // OpenRouter has no key configured — this is what makes the OpenRouter

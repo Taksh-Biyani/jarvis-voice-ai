@@ -5,6 +5,12 @@ contextBridge.exposeInMainWorld('jarvisElectron', {
   fetchSteamLibrary: (apiKey, steamId) => ipcRenderer.invoke('steam:fetch-owned-games', { apiKey, steamId }),
   solveMath: (appId, query) => ipcRenderer.invoke('wolfram:solve', { appId, query }),
   spotifyResolveTrack: (clientId, clientSecret, query) => ipcRenderer.invoke('spotify:resolve-track', { clientId, clientSecret, query }),
+  spotifyAuth: {
+    status: () => ipcRenderer.invoke('spotify:auth-status'),
+    login: (clientId, clientSecret) => ipcRenderer.invoke('spotify:authorize', { clientId, clientSecret }),
+    logout: () => ipcRenderer.invoke('spotify:logout'),
+    getLibrary: (clientId, clientSecret) => ipcRenderer.invoke('spotify:get-library', { clientId, clientSecret })
+  },
   mic: {
     start: () => ipcRenderer.invoke('mic:start'),
     stop: () => ipcRenderer.invoke('mic:stop'),

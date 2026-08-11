@@ -16,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -35,9 +35,66 @@ export class AutonomousToolReasoner {
     // Checked before the gaming section since it's an unambiguous, explicit
     // trigger rather than a heuristic guess.
     if (text.includes('spotify')) {
-      const playOnSpotify = text.match(/play\s+(.+?)\s+on\s+spotify/i)
-        || text.match(/spotify\s+play\s+(.+)/i)
-        || text.match(/play\s+(.+?)\s+(?:in|via)\s+spotify/i);
+      // Library-context keywords (playlist/album/liked songs) take priority
+      // over a plain track search even when "spotify" is explicitly said
+      // ("play the chill playlist from spotify" must resolve against the
+      // user's real playlists, not a track-name search for "the chill
+      // playlist"). Mirrors the unconditional matching in 1b below.
+      const likedInSpotify = text.match(/play\s+(?:my\s+)?(?:liked|saved)\s+songs?\b/i);
+      if (likedInSpotify) {
+        return {
+          shouldCallTool: true,
+          toolName: 'SPOTIFY_PLAY_LIBRARY',
+          confidence: 0.93,
+          params: { kind: 'liked', query: '' },
+          reasoning: "Autonomous reasoner detected intent to play the user's Liked Songs on Spotify."
+        };
+      }
+
+      const playlistInSpotify = text.match(/play\s+(?:the\s+|my\s+)?playlist\s+(.+)/i)
+        || text.match(/play\s+(?:my\s+)?(.+?)\s+playlist\b/i);
+      if (playlistInSpotify && playlistInSpotify[1]) {
+        // Strip a trailing "... from/on/in/via spotify" phrase, and strip
+        // the bare word "spotify" itself if it landed inside the capture
+        // (e.g. "play my spotify playlist" has no real playlist name — just
+        // "spotify" sitting between "my" and "playlist" as filler).
+        const playlistName = playlistInSpotify[1]
+          .replace(/\s*(?:on|in|via|from)\s+spotify\s*$/i, '')
+          .replace(/\bspotify\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return {
+          shouldCallTool: true,
+          toolName: 'SPOTIFY_PLAY_LIBRARY',
+          confidence: 0.9,
+          params: { kind: 'playlist', query: playlistName },
+          reasoning: `Autonomous reasoner detected intent to play playlist "${playlistName}" from the user's Spotify library.`
+        };
+      }
+
+      const albumInSpotify = text.match(/play\s+(?:the\s+|my\s+)?album\s+(.+)/i)
+        || text.match(/play\s+(?:my\s+)?(.+?)\s+album\b/i);
+      if (albumInSpotify && albumInSpotify[1]) {
+        const albumName = albumInSpotify[1]
+          .replace(/\s*(?:on|in|via|from)\s+spotify\s*$/i, '')
+          .replace(/\bspotify\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return {
+          shouldCallTool: true,
+          toolName: 'SPOTIFY_PLAY_LIBRARY',
+          confidence: 0.9,
+          params: { kind: 'album', query: albumName },
+          reasoning: `Autonomous reasoner detected intent to play album "${albumName}" from the user's Spotify library.`
+        };
+      }
+
+      // "on/in/via/from spotify" — covers all the natural prepositions
+      // people actually say ("from spotify" was previously missing here,
+      // which let phrases like "play <album> from spotify" fall all the way
+      // through to the Steam gaming fallback below and launch Steam instead).
+      const playOnSpotify = text.match(/play\s+(.+?)\s+(?:on|in|via|from)\s+spotify\b/i)
+        || text.match(/spotify\s+play\s+(.+)/i);
 
       if (playOnSpotify && playOnSpotify[1]) {
         return {
@@ -58,6 +115,67 @@ export class AutonomousToolReasoner {
           reasoning: "Autonomous reasoner identified intent to open the Spotify application."
         };
       }
+
+      // Safety net: any phrase that mentions "spotify" alongside a "play"
+      // verb but didn't match a pattern above (unusual phrasing, STT
+      // artifacts, etc.) must still resolve to Spotify, never fall through
+      // to the Steam section below and get misread as a game title.
+      const genericPlay = text.match(/play\s+(.+)/i);
+      if (genericPlay && genericPlay[1]) {
+        const query = genericPlay[1].replace(/\s*(?:on|in|via|from)?\s*spotify\s*$/i, '').trim();
+        if (query) {
+          return {
+            shouldCallTool: true,
+            toolName: 'SPOTIFY_PLAY_SONG',
+            confidence: 0.85,
+            params: { query },
+            reasoning: `Autonomous reasoner detected intent to play "${query}" via Spotify (fallback phrasing match).`
+          };
+        }
+      }
+    }
+
+    // 1b. Personal Spotify library context (playlist/album/liked songs).
+    // Detected independently of the literal word "spotify" so natural
+    // phrasing works ("play my chill playlist"), and checked before the
+    // Steam gaming section below since bare "play" is a Steam trigger there.
+    // These keywords (playlist/album/liked songs) are unambiguous to
+    // Spotify, so there's no risk of colliding with a game-title guess.
+    const likedSongsMatch = text.match(/play\s+(?:my\s+)?(?:liked|saved)\s+songs?\b/i);
+    if (likedSongsMatch) {
+      return {
+        shouldCallTool: true,
+        toolName: 'SPOTIFY_PLAY_LIBRARY',
+        confidence: 0.93,
+        params: { kind: 'liked', query: '' },
+        reasoning: "Autonomous reasoner detected intent to play the user's Liked Songs on Spotify."
+      };
+    }
+
+    const playlistMatch = text.match(/play\s+(?:the\s+|my\s+)?playlist\s+(.+)/i)
+      || text.match(/play\s+(?:my\s+)?(.+?)\s+playlist\b/i);
+    if (playlistMatch && playlistMatch[1]) {
+      const playlistName = playlistMatch[1].trim();
+      return {
+        shouldCallTool: true,
+        toolName: 'SPOTIFY_PLAY_LIBRARY',
+        confidence: 0.9,
+        params: { kind: 'playlist', query: playlistName },
+        reasoning: `Autonomous reasoner detected intent to play playlist "${playlistName}" from the user's Spotify library.`
+      };
+    }
+
+    const albumMatch = text.match(/play\s+(?:the\s+|my\s+)?album\s+(.+)/i)
+      || text.match(/play\s+(?:my\s+)?(.+?)\s+album\b/i);
+    if (albumMatch && albumMatch[1]) {
+      const albumName = albumMatch[1].trim();
+      return {
+        shouldCallTool: true,
+        toolName: 'SPOTIFY_PLAY_LIBRARY',
+        confidence: 0.9,
+        params: { kind: 'album', query: albumName },
+        reasoning: `Autonomous reasoner detected intent to play album "${albumName}" from the user's Spotify library.`
+      };
     }
 
     // 2. Check for gaming & Steam launch intents (implicit & explicit)

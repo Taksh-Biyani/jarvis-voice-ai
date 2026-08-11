@@ -1,13 +1,23 @@
-const { app, BrowserWindow, Tray, Menu, shell, session, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, session, ipcMain, nativeImage, safeStorage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const fs = require('fs');
 const https = require('https');
+const http = require('http');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { classifyUpdate } = require('./update-classify.cjs');
 
 const DEV_URL = 'http://localhost:3000';
 const ICON_PATH = path.join(__dirname, 'icon.png');
 const SPEECH_SCRIPT_PATH = path.join(__dirname, 'speech-recognizer.ps1');
+
+// Local loopback redirect for Spotify's Authorization Code OAuth flow — this
+// exact URI must be added to the app's "Redirect URIs" in the Spotify
+// Developer Dashboard (developer.spotify.com/dashboard) for login to work.
+const SPOTIFY_REDIRECT_PORT = 43417;
+const SPOTIFY_REDIRECT_URI = `http://127.0.0.1:${SPOTIFY_REDIRECT_PORT}/callback`;
+const SPOTIFY_AUTH_SCOPES = 'playlist-read-private playlist-read-collaborative user-library-read';
 
 let mainWindow = null;
 let tray = null;
@@ -323,6 +333,253 @@ function registerSpotifyIpc() {
   });
 }
 
+// --- Spotify account connection (Authorization Code OAuth) ---------------
+// Gives JARVIS read access to the user's own playlists and saved albums —
+// something the Client Credentials flow above can never see, since that
+// flow only authenticates the app itself, not a specific Spotify user.
+// Tokens are encrypted at rest via Electron's safeStorage (OS keychain/DPAPI
+// on Windows — no extra dependency needed).
+function spotifyTokensPath() {
+  return path.join(app.getPath('userData'), 'spotify-tokens.bin');
+}
+
+function loadSpotifyTokens() {
+  try {
+    const tokenPath = spotifyTokensPath();
+    if (!fs.existsSync(tokenPath) || !safeStorage.isEncryptionAvailable()) return null;
+    const decrypted = safeStorage.decryptString(fs.readFileSync(tokenPath));
+    return JSON.parse(decrypted);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveSpotifyTokens(tokens) {
+  if (!safeStorage.isEncryptionAvailable()) return;
+  fs.writeFileSync(spotifyTokensPath(), safeStorage.encryptString(JSON.stringify(tokens)));
+}
+
+function clearSpotifyTokens() {
+  try {
+    const tokenPath = spotifyTokensPath();
+    if (fs.existsSync(tokenPath)) fs.unlinkSync(tokenPath);
+  } catch (e) {}
+}
+
+function spotifyTokenRequest(clientId, clientSecret, bodyParams) {
+  const body = new URLSearchParams(bodyParams).toString();
+  const authHeader = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  return new Promise((resolve, reject) => {
+    const req = https.request('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Spotify token exchange HTTP ${res.statusCode}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(new Error('Invalid Spotify token response'));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function getValidSpotifyAccessToken(clientId, clientSecret) {
+  const tokens = loadSpotifyTokens();
+  if (!tokens || !tokens.refresh_token) return null;
+
+  // 60s safety margin before actual expiry.
+  if (tokens.access_token && tokens.expires_at && Date.now() < tokens.expires_at - 60000) {
+    return tokens.access_token;
+  }
+
+  const refreshed = await spotifyTokenRequest(clientId, clientSecret, {
+    grant_type: 'refresh_token',
+    refresh_token: tokens.refresh_token
+  });
+
+  const updated = {
+    access_token: refreshed.access_token,
+    refresh_token: refreshed.refresh_token || tokens.refresh_token,
+    expires_at: Date.now() + refreshed.expires_in * 1000
+  };
+  saveSpotifyTokens(updated);
+  return updated.access_token;
+}
+
+function spotifyApiGet(url, accessToken) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { Authorization: `Bearer ${accessToken}` } }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          // Surface Spotify's actual error body (usually
+          // {"error":{"status":...,"message":"..."}}) instead of a bare
+          // status code — a 403 here can mean several different things
+          // (missing scope, dashboard user-access restriction, revoked
+          // token) and the message says which.
+          let reason = data;
+          try { reason = JSON.parse(data)?.error?.message || data; } catch (e) {}
+          reject(new Error(`Spotify API HTTP ${res.statusCode} on ${url.replace(/^https:\/\/api\.spotify\.com\/v1\//, '')}: ${reason}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(new Error('Invalid Spotify API response'));
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function fetchAllSpotifyPages(firstUrl, accessToken) {
+  let items = [];
+  let next = firstUrl;
+  while (next) {
+    const page = await spotifyApiGet(next, accessToken);
+    items = items.concat(page.items || []);
+    next = page.next;
+  }
+  return items;
+}
+
+function registerSpotifyAuthIpc() {
+  ipcMain.handle('spotify:auth-status', () => {
+    const tokens = loadSpotifyTokens();
+    return { authenticated: !!(tokens && tokens.refresh_token) };
+  });
+
+  ipcMain.handle('spotify:logout', () => {
+    clearSpotifyTokens();
+    return { success: true };
+  });
+
+  // Opens the system browser for the user to approve access, catches the
+  // redirect on a local loopback HTTP server (the standard desktop-app OAuth
+  // pattern), then exchanges the code for tokens in the main process so the
+  // client secret never touches the renderer or a third-party proxy.
+  ipcMain.handle('spotify:authorize', (event, { clientId, clientSecret }) => {
+    if (!clientId || !clientSecret) {
+      return Promise.reject(new Error('Spotify Client ID and Secret are required to connect your account.'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const state = crypto.randomBytes(16).toString('hex');
+      let settled = false;
+      let server;
+
+      const finish = (fn, arg) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        try { server.close(); } catch (e) {}
+        fn(arg);
+      };
+
+      const timeout = setTimeout(() => {
+        finish(reject, new Error('Spotify login timed out. Please try again.'));
+      }, 120000);
+
+      server = http.createServer((req, res) => {
+        const reqUrl = new URL(req.url, `http://127.0.0.1:${SPOTIFY_REDIRECT_PORT}`);
+        if (reqUrl.pathname !== '/callback') {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+
+        const code = reqUrl.searchParams.get('code');
+        const returnedState = reqUrl.searchParams.get('state');
+        const authError = reqUrl.searchParams.get('error');
+        const ok = !authError && code && returnedState === state;
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(
+          `<html><body style="font-family:sans-serif;background:#05070c;color:${ok ? '#39ff14' : '#ff3b3b'};text-align:center;padding-top:80px">` +
+          `<h2>JARVIS: Spotify ${ok ? 'connected' : 'connection failed'}.</h2>` +
+          `<p style="color:#8899aa">You can close this tab and return to JARVIS.</p></body></html>`
+        );
+
+        if (!ok) {
+          finish(reject, new Error(authError ? `Spotify authorization denied: ${authError}` : 'Invalid Spotify authorization response.'));
+          return;
+        }
+
+        spotifyTokenRequest(clientId, clientSecret, {
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: SPOTIFY_REDIRECT_URI
+        }).then((tokenResp) => {
+          saveSpotifyTokens({
+            access_token: tokenResp.access_token,
+            refresh_token: tokenResp.refresh_token,
+            expires_at: Date.now() + tokenResp.expires_in * 1000
+          });
+          finish(resolve, { success: true });
+        }).catch((err) => finish(reject, err));
+      });
+
+      server.on('error', (err) => {
+        finish(reject, new Error(`Could not start local Spotify login server: ${err.message}`));
+      });
+
+      server.listen(SPOTIFY_REDIRECT_PORT, '127.0.0.1', () => {
+        const authUrl = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
+          client_id: clientId,
+          response_type: 'code',
+          redirect_uri: SPOTIFY_REDIRECT_URI,
+          scope: SPOTIFY_AUTH_SCOPES,
+          state
+        }).toString();
+        shell.openExternal(authUrl);
+      });
+    });
+  });
+
+  ipcMain.handle('spotify:get-library', async (event, { clientId, clientSecret }) => {
+    const accessToken = await getValidSpotifyAccessToken(clientId, clientSecret);
+    if (!accessToken) {
+      throw new Error('Not connected to Spotify. Please connect your account first.');
+    }
+
+    const [playlistItems, albumItems] = await Promise.all([
+      fetchAllSpotifyPages('https://api.spotify.com/v1/me/playlists?limit=50', accessToken),
+      fetchAllSpotifyPages('https://api.spotify.com/v1/me/albums?limit=50', accessToken)
+    ]);
+
+    return {
+      playlists: playlistItems
+        .filter((p) => p && p.id)
+        .map((p) => ({ id: p.id, name: p.name, uri: p.uri, owner: p.owner?.display_name || '' })),
+      albums: albumItems
+        .filter((entry) => entry && entry.album)
+        .map((entry) => ({
+          id: entry.album.id,
+          name: entry.album.name,
+          uri: entry.album.uri,
+          artist: entry.album.artists?.[0]?.name || ''
+        }))
+    };
+  });
+}
+
 function sendUpdateState(state) {
   if (mainWindow) mainWindow.webContents.send('update:state', state);
 }
@@ -407,6 +664,7 @@ app.whenReady().then(() => {
   registerMicIpc();
   registerWolframIpc();
   registerSpotifyIpc();
+  registerSpotifyAuthIpc();
   registerUpdaterEvents();
   registerUpdateIpc();
   createWindow();

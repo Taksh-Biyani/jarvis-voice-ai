@@ -277,6 +277,10 @@ function initApp() {
   // 8c. Software Update Panel (Electron-only — no-op in plain browser dev mode)
   initUpdatePanel();
 
+  // 8c2. Spotify Account Connection Panel (Electron-only — OAuth needs the
+  // main-process loopback server)
+  initSpotifyAccountPanel();
+
   // 8d. Model-Tier Slider (Quick/Medium/High/Ultra Groq models)
   initTierControl();
 
@@ -693,6 +697,92 @@ function initSettingsPanel() {
           apiKeysStatus.style.color = 'var(--text-dim)';
         }
       }
+    });
+  }
+}
+
+/**
+ * Reads the currently-saved Spotify Client ID/Secret the same way
+ * JarvisCore does (VITE env var, falling back to Settings-saved
+ * localStorage values) — kept local rather than reading off the `jarvis`
+ * instance since these panels can init before it's constructed.
+ */
+function getSavedSpotifyCredentials() {
+  const clientId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_ID)
+    || localStorage.getItem('jarvis_spotify_client_id')
+    || '';
+  const clientSecret = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_SECRET)
+    || localStorage.getItem('jarvis_spotify_client_secret')
+    || '';
+  return { clientId, clientSecret };
+}
+
+/**
+ * Wires the Settings modal's "Spotify Account" section to the main-process
+ * OAuth bridge (electron/preload.cjs -> electron/main.cjs), so JARVIS can
+ * read the user's own playlists/saved albums. Hidden entirely outside
+ * Electron, since the OAuth loopback server only runs in the main process.
+ */
+function initSpotifyAccountPanel() {
+  if (typeof window === 'undefined' || !window.jarvisElectron?.spotifyAuth) return;
+
+  const section = document.getElementById('spotifyAccountSection');
+  const statusEl = document.getElementById('spotifyAccountStatus');
+  const connectBtn = document.getElementById('spotifyConnectBtn');
+  const disconnectBtn = document.getElementById('spotifyDisconnectBtn');
+
+  if (!section || !connectBtn) return;
+  section.style.display = '';
+
+  const render = (authenticated) => {
+    if (statusEl) {
+      statusEl.textContent = authenticated ? '✅ Connected' : 'Not connected';
+      statusEl.style.color = authenticated ? '#39ff14' : 'var(--text-dim)';
+    }
+    connectBtn.style.display = authenticated ? 'none' : '';
+    if (disconnectBtn) disconnectBtn.style.display = authenticated ? '' : 'none';
+  };
+
+  window.jarvisElectron.spotifyAuth.status()
+    .then(({ authenticated }) => render(authenticated))
+    .catch(() => render(false));
+
+  connectBtn.addEventListener('click', async () => {
+    const { clientId, clientSecret } = getSavedSpotifyCredentials();
+    if (!clientId || !clientSecret) {
+      if (statusEl) {
+        statusEl.textContent = 'Save a Spotify Client ID/Secret above first.';
+        statusEl.style.color = '#ff9f1c';
+      }
+      return;
+    }
+
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'CONNECTING… (check your browser)';
+    if (statusEl) {
+      statusEl.textContent = 'Approve access in the browser tab that just opened…';
+      statusEl.style.color = 'var(--text-dim)';
+    }
+
+    try {
+      await window.jarvisElectron.spotifyAuth.login(clientId, clientSecret);
+      render(true);
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = `Connection failed: ${err.message}`;
+        statusEl.style.color = '#ff3b3b';
+      }
+      render(false);
+    } finally {
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'CONNECT SPOTIFY ACCOUNT';
+    }
+  });
+
+  if (disconnectBtn) {
+    disconnectBtn.addEventListener('click', async () => {
+      await window.jarvisElectron.spotifyAuth.logout();
+      render(false);
     });
   }
 }

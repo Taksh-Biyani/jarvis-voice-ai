@@ -255,6 +255,23 @@
         <div class="steam-library-status" id="apiKeysStatus"></div>
       </div>
 
+      <div class="settings-section" id="spotifyAccountSection" style="display: none;">
+        <div class="settings-section-title">🎵 Spotify Account</div>
+        <div class="settings-hint">
+          Connect your own Spotify account so JARVIS can play your saved playlists and
+          albums by name (e.g. "play my Chill playlist") and your Liked Songs. Requires a
+          Spotify Client ID/Secret above, and this exact Redirect URI added under your
+          app's settings on the
+          <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a>:
+          <code>http://127.0.0.1:43417/callback</code>
+        </div>
+        <div class="settings-row">
+          <span id="spotifyAccountStatus">Not connected</span>
+        </div>
+        <button class="btn-steam-save" id="spotifyConnectBtn">CONNECT SPOTIFY ACCOUNT</button>
+        <button class="btn-steam-save" id="spotifyDisconnectBtn" style="display: none;">DISCONNECT</button>
+      </div>
+
       <div class="settings-section" id="updateSection" style="display: none;">
         <div class="settings-section-title">🔄 Software Update</div>
         <div class="settings-row">
