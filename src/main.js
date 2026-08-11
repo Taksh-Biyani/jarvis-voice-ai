@@ -1,6 +1,7 @@
 import { VoiceEngine } from './voice-engine.js';
 import { BrowserHarness } from './harness.js';
 import { JarvisCore } from './jarvis-core.js';
+import { ConversationController } from './conversation-controller.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { isUpdateSupported, getCurrentVersion, checkForUpdate, downloadUpdate, installUpdate, onUpdateState } from './update-manager.js';
 import { MODEL_TIERS, TIER_ORDER } from './model-tiers.js';
@@ -38,11 +39,10 @@ let harness;
 let jarvis;
 let isMuted = false;
 
-// Wake-word state machine ("Jarvis" / "Hey Jarvis")
-const WAKE_WORD_REGEX = /^(?:hey[,]?\s+)?jarvis\b[,!.\s]*/i;
-const WAKE_TIMEOUT_MS = 8000;
-let awaitingCommand = false;
+// Wake-word / conversation-mode state machine ("Jarvis" / "Hey Jarvis")
+const conversationController = new ConversationController();
 let wakeTimeoutId = null;
+let conversationTimeoutId = null;
 
 function initApp() {
   // 1. Terminal logger helper
@@ -122,40 +122,52 @@ function initApp() {
 
   voiceEngine = new VoiceEngine({
     onTranscript: ({ text, isFinal }) => {
-      if (transcriptDisplay && !awaitingCommand) transcriptDisplay.textContent = text;
+      if (transcriptDisplay && !conversationController.isAwaitingCommand) transcriptDisplay.textContent = text;
       if (!isFinal || !jarvis) return;
 
-      // Already woken up (wake word was said alone) — treat this utterance as the command.
-      if (awaitingCommand) {
-        clearTimeout(wakeTimeoutId);
-        awaitingCommand = false;
-        const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
-        jarvis.processUserInput(command);
-        return;
-      }
+      const result = conversationController.handleTranscript(text);
 
-      const wakeMatch = text.match(WAKE_WORD_REGEX);
-      if (!wakeMatch) {
+      if (result.action === 'IGNORE') {
         // Not addressed to JARVIS — ignore ambient speech while passively listening.
         return;
       }
 
-      // Always chime the instant the wake word is heard, whether or not a
-      // command follows immediately — this is the "yes, I heard you" cue.
-      voiceEngine.playBeep(1000, 0.08, 'sine');
-
-      const command = text.slice(wakeMatch[0].length).trim();
-      if (command) {
-        // "Hey Jarvis, play Dota" — wake word + command in one breath.
-        jarvis.processUserInput(command);
-      } else {
-        // Wake word said alone — wait for the follow-up command.
-        awaitingCommand = true;
+      if (result.action === 'AWAIT_COMMAND') {
+        // Always chime the instant the wake word is heard, whether or not a
+        // command follows immediately — this is the "yes, I heard you" cue.
+        voiceEngine.playBeep(1000, 0.08, 'sine');
         if (transcriptDisplay) transcriptDisplay.textContent = 'Yes, Sir? Listening for your command...';
+        clearTimeout(wakeTimeoutId);
         wakeTimeoutId = setTimeout(() => {
-          awaitingCommand = false;
+          conversationController.onWakeTimeout();
           if (transcriptDisplay) transcriptDisplay.textContent = 'Say "Jarvis" to give a command...';
-        }, WAKE_TIMEOUT_MS);
+        }, 8000);
+        return;
+      }
+
+      if (result.action === 'DISPATCH_COMMAND') {
+        clearTimeout(wakeTimeoutId);
+        if (result.chime) {
+          // "Hey Jarvis, play Dota" — wake word + command in one breath. This is
+          // the only case that needs a fresh chime here: the AWAIT_COMMAND branch
+          // above already played it when "Jarvis" was said alone, and in-conversation
+          // follow-ups intentionally stay silent (see spec: no chime per turn).
+          voiceEngine.playBeep(1000, 0.08, 'sine');
+        }
+        clearTimeout(conversationTimeoutId);
+        conversationTimeoutId = setTimeout(() => {
+          conversationController.onConversationTimeout();
+          voiceEngine.playBeep(500, 0.12, 'sine');
+          if (transcriptDisplay) transcriptDisplay.textContent = 'Conversation ended. Say "Jarvis" to start.';
+        }, 120000);
+        jarvis.processUserInput(result.command);
+        return;
+      }
+
+      if (result.action === 'END_CONVERSATION') {
+        clearTimeout(conversationTimeoutId);
+        voiceEngine.playBeep(500, 0.12, 'sine');
+        if (transcriptDisplay) transcriptDisplay.textContent = 'Conversation ended. Say "Jarvis" to start.';
       }
     },
     onStateChange: (state) => {
@@ -290,8 +302,9 @@ function initApp() {
       if (voiceEngine.isListening) {
         voiceEngine.stopListening();
         micBtn.classList.remove('active');
-        awaitingCommand = false;
+        conversationController.reset();
         clearTimeout(wakeTimeoutId);
+        clearTimeout(conversationTimeoutId);
         if (transcriptDisplay) transcriptDisplay.textContent = 'Voice input paused.';
       } else {
         const success = voiceEngine.startListening();
