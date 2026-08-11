@@ -34,7 +34,7 @@
       "provider": "github",
       "owner": "Taksh-Biyani",
       "repo": "jarvis-voice-ai",
-      "draft": false
+      "releaseType": "release"
     },
     "files": [
       "dist/**/*",

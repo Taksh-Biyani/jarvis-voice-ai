@@ -110,9 +110,9 @@ the in-app updater will pick up:
        npm run electron:release
 
    This builds the installer and publishes it as a live (non-draft) GitHub
-   Release automatically — the `"draft": false` setting in `package.json`'s
-   `build.publish` block is what makes this happen; `electron-builder`
-   creates **draft** releases by default otherwise, and a draft is
+   Release automatically — the `"releaseType": "release"` setting in
+   `package.json`'s `build.publish` block is what makes this happen;
+   `electron-builder` creates **draft** releases by default otherwise, and a draft is
    completely invisible to both the in-app updater and anyone visiting the
    repo's Releases page. If a release ever does end up stuck as a draft
    (e.g. from a build run before that setting was added), publish it
