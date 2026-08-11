@@ -105,3 +105,13 @@ test('stop phrases are ignored while no conversation is active', () => {
 
   assert.deepEqual(result, { action: 'IGNORE' });
 });
+
+test('ambient speech with no wake word is ignored while idle', () => {
+  const controller = new ConversationController();
+
+  const result = controller.handleTranscript('what a nice day it is today');
+
+  assert.deepEqual(result, { action: 'IGNORE' });
+  assert.equal(controller.isAwaitingCommand, false);
+  assert.equal(controller.isConversationActive, false);
+});
