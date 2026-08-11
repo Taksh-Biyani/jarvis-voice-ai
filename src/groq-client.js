@@ -7,6 +7,7 @@
 
 import { fetchChatCompletion } from './llm-completion.js';
 import { buildJarvisMessages } from './llm-persona.js';
+import { MODEL_TIERS } from './model-tiers.js';
 
 export class GroqClient {
   constructor(apiKey = '', options = {}) {
@@ -14,8 +15,19 @@ export class GroqClient {
     this.baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
     this.onLog = options.onLog || (() => {});
 
-    // llama-3.1-8b-instant first for speed; 70B fallback if it's rate-limited/unavailable.
-    this.modelQueue = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+    this.currentTier = 'quick';
+    this.modelQueue = [MODEL_TIERS.quick.model];
+  }
+
+  /**
+   * Switches which Groq model this client calls, via the tier picked from
+   * the HUD slider or a "switch mode to X" voice command.
+   */
+  setTier(tierKey) {
+    const tier = MODEL_TIERS[tierKey];
+    if (!tier) return;
+    this.currentTier = tierKey;
+    this.modelQueue = [tier.model];
   }
 
   /**

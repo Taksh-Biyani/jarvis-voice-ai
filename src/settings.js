@@ -13,7 +13,8 @@ export const DEFAULT_SETTINGS = {
   openTabOnSearch: true,
   voiceGender: 'male',
   soundMeterEnabled: true,
-  useGroq: false
+  useGroq: false,
+  groqModelTier: 'quick'
 };
 
 export function loadSettings() {

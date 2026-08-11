@@ -9,7 +9,8 @@ import { AutonomousToolReasoner } from './autonomous-tool-reasoner.js';
 import { OpenRouterClient } from './openrouter-client.js';
 import { GroqClient } from './groq-client.js';
 import { WolframClient } from './wolfram-client.js';
-import { loadSettings } from './settings.js';
+import { MODEL_TIERS } from './model-tiers.js';
+import { loadSettings, saveSettings } from './settings.js';
 
 export class JarvisCore {
   constructor(voiceEngine, harness, options = {}) {
@@ -44,6 +45,7 @@ export class JarvisCore {
     this.groq = new GroqClient(groqApiKey, {
       onLog: (logData) => this.onLog(logData)
     });
+    this.groq.setTier(loadSettings().groqModelTier);
 
     // Instantiate WolframAlpha Client (optional — grounds math answers in a
     // real computation instead of the LLM guessing; no key means MATH_QUERY
@@ -181,7 +183,31 @@ export class JarvisCore {
       return;
     }
 
-    // 4. Handle Math Queries via WolframAlpha
+    // 4. Handle Model-Tier Switch Commands
+    if (decision.toolName === 'SET_MODEL_TIER') {
+      const tier = MODEL_TIERS[decision.params.tier];
+      const groqApiKey = this.groq.apiKey;
+
+      let spokenResponse;
+      if (!groqApiKey) {
+        spokenResponse = "You'll need a Groq API key in Settings first, Sir.";
+      } else {
+        saveSettings({ groqModelTier: decision.params.tier, useGroq: true });
+        this.groq.setTier(decision.params.tier);
+        spokenResponse = `Switched to ${tier.label} mode, Sir.`;
+      }
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'SET_MODEL_TIER',
+        data: { tier: decision.params.tier, applied: Boolean(groqApiKey) }
+      });
+
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 5. Handle Math Queries via WolframAlpha
     if (decision.toolName === 'MATH_QUERY') {
       this._updateAgentState("agent-3", "COMPUTING", `Solving: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
@@ -215,7 +241,7 @@ export class JarvisCore {
       return;
     }
 
-    // 5. Handle Google Search Commands (Explicit or Autonomous)
+    // 6. Handle Google Search Commands (Explicit or Autonomous)
     if (decision.toolName === 'GOOGLE_SEARCH') {
       this._updateAgentState("agent-3", "SEARCHING", `Querying: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
@@ -255,7 +281,7 @@ export class JarvisCore {
       return;
     }
 
-    // 6. Handle Direct Website Navigation
+    // 7. Handle Direct Website Navigation
     if (decision.toolName === 'OPEN_SITE') {
       this._updateAgentState("agent-3", "EXECUTING", `Navigating to website: ${decision.params.siteName}`);
       this.voiceEngine.playSearchLaunchSound();
@@ -274,7 +300,7 @@ export class JarvisCore {
       return;
     }
 
-    // 7. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
+    // 8. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
     this._updateAgentState("agent-6", "THINKING", "Querying OpenRouter LLM API...");
 
     let answerText = await this._chatWithActiveLLM(input, this.conversationHistory);

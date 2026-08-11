@@ -74,6 +74,24 @@ Click **⚙️ SETTINGS** in the header to configure:
   always requires the explicit restart click; nothing installs itself
   without your say-so.
 
+## Model Tiers
+
+A **🧠 slider in the header** (not Settings) picks how JARVIS thinks, mapped
+to different Groq models:
+
+| Tier | Model |
+|---|---|
+| Quick | `llama-3.1-8b-instant` — fastest, default |
+| Medium | `llama-3.3-70b-versatile` |
+| High | `openai/gpt-oss-120b` — Groq's largest standalone reasoning model |
+| Ultra | `groq/compound` — an agentic system that can autonomously do its own web search/code execution mid-answer |
+
+Drag the slider, or just say **"switch mode to quick/medium/high/ultra"**
+(also understands "low" for quick and "max"/"maximum" for ultra) — both
+paths do the same thing and stay in sync with each other. Needs a Groq API
+key (Settings, one-time); the slider stays disabled with a hint until one's
+saved, and picking a tier automatically makes Groq the active provider.
+
 ## Running it
 
 Dev mode needs two terminals — Vite serves the UI, Electron just points a

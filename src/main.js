@@ -3,6 +3,7 @@ import { BrowserHarness } from './harness.js';
 import { JarvisCore } from './jarvis-core.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { isUpdateSupported, getCurrentVersion, checkForUpdate, downloadUpdate, installUpdate, onUpdateState } from './update-manager.js';
+import { MODEL_TIERS, TIER_ORDER } from './model-tiers.js';
 
 // DOM Element References
 const micBtn = document.getElementById('micBtn');
@@ -175,8 +176,11 @@ function initApp() {
   jarvis = new JarvisCore(voiceEngine, harness, {
     onLog: addLog,
     onStatusChange: updateStatus,
-    onResponse: ({ text, actionType }) => {
+    onResponse: ({ text, actionType, data }) => {
       addLog({ type: 'JARVIS', message: text });
+      if (actionType === 'SET_MODEL_TIER' && data?.applied) {
+        syncTierControl(data.tier);
+      }
     },
     onSwarmUpdate: renderSwarmTelemetry
   });
@@ -272,6 +276,9 @@ function initApp() {
 
   // 8c. Software Update Panel (Electron-only — no-op in plain browser dev mode)
   initUpdatePanel();
+
+  // 8d. Model-Tier Slider (Quick/Medium/High/Ultra Groq models)
+  initTierControl();
 
   // Voice & Mute Control Handlers
   if (micBtn) {
@@ -640,6 +647,7 @@ function initSettingsPanel() {
         if (jarvis) jarvis.groq.apiKey = groqKey;
         groqKeyInput.value = '';
         groqKeyInput.placeholder = '••••••••••••••••• (saved)';
+        refreshTierControlAvailability();
       }
       if (deepgramKey) {
         localStorage.setItem('jarvis_deepgram_api_key', deepgramKey);
@@ -744,6 +752,67 @@ function initUpdatePanel() {
     } else {
       checkForUpdate();
     }
+  });
+}
+
+/**
+ * Enables/disables the tier slider and updates its label based on whether a
+ * Groq key exists — called at init and again right after a Groq key is saved
+ * in Settings, so the slider goes live immediately without a page reload.
+ */
+function refreshTierControlAvailability() {
+  const tierSlider = document.getElementById('tierSlider');
+  const tierControlLabel = document.getElementById('tierControlLabel');
+  if (!tierSlider || !tierControlLabel) return;
+
+  const hasGroqKey = Boolean(localStorage.getItem('jarvis_groq_api_key'));
+  tierSlider.disabled = !hasGroqKey;
+
+  if (!hasGroqKey) {
+    tierControlLabel.textContent = 'Add Groq key';
+  } else {
+    const tierKey = TIER_ORDER[Number(tierSlider.value)];
+    tierControlLabel.textContent = MODEL_TIERS[tierKey].label;
+  }
+}
+
+/**
+ * Moves the slider thumb and updates its label to match a tier switch that
+ * happened elsewhere (a voice/text command), so both control paths agree.
+ */
+function syncTierControl(tierKey) {
+  const tierSlider = document.getElementById('tierSlider');
+  const tierControlLabel = document.getElementById('tierControlLabel');
+  if (!tierSlider || !tierControlLabel || !MODEL_TIERS[tierKey]) return;
+  tierSlider.value = String(TIER_ORDER.indexOf(tierKey));
+  tierControlLabel.textContent = MODEL_TIERS[tierKey].label;
+}
+
+/**
+ * Wires the header's Quick/Medium/High/Ultra Groq model-tier slider. Dragging
+ * it routes through the exact same processUserInput path as the voice
+ * command ("switch mode to high"), so settings persistence, the no-key
+ * prompt, and the spoken confirmation all stay in one place.
+ */
+function initTierControl() {
+  const tierSlider = document.getElementById('tierSlider');
+  if (!tierSlider) return;
+
+  const settings = loadSettings();
+  const tierIndex = Math.max(0, TIER_ORDER.indexOf(settings.groqModelTier));
+  tierSlider.value = String(tierIndex);
+
+  refreshTierControlAvailability();
+
+  tierSlider.addEventListener('input', () => {
+    const tierControlLabel = document.getElementById('tierControlLabel');
+    const tierKey = TIER_ORDER[Number(tierSlider.value)];
+    if (tierControlLabel) tierControlLabel.textContent = MODEL_TIERS[tierKey].label;
+  });
+
+  tierSlider.addEventListener('change', () => {
+    const tierKey = TIER_ORDER[Number(tierSlider.value)];
+    if (jarvis) jarvis.processUserInput(`switch mode to ${tierKey}`);
   });
 }
 

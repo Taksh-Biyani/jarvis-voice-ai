@@ -20,6 +20,17 @@
         </div>
       </div>
 
+      <div class="tier-control" id="tierControl" title="Groq model tier — drag, or say &quot;switch mode to quick/medium/high/ultra&quot;">
+        <span class="tier-control-icon">🧠</span>
+        <div class="tier-control-track">
+          <input type="range" id="tierSlider" class="tier-slider" min="0" max="3" step="1" value="0" disabled />
+          <div class="tier-control-ticks">
+            <span>Quick</span><span>Medium</span><span>High</span><span>Ultra</span>
+          </div>
+        </div>
+        <span class="tier-control-label" id="tierControlLabel">Add Groq key</span>
+      </div>
+
       <div style="display: flex; align-items: center; gap: 12px;">
         <button class="btn-harness" id="settingsBtn" style="border-color: var(--border-cyan); color: var(--cyan-bright); position: relative;" title="Settings">
           ⚙️ SETTINGS

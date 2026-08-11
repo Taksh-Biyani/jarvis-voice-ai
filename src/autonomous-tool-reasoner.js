@@ -4,6 +4,8 @@
  * Google Search, Steam Game Launcher, Web Navigation, or System Utilities autonomously.
  */
 
+import { normalizeTierAlias } from './model-tiers.js';
+
 export class AutonomousToolReasoner {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
@@ -14,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -103,7 +105,28 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 2. Check for math queries (arithmetic through high-level math) —
+    // 2. Check for a model-tier switch command ("switch mode to high",
+    // "set mode to max") — checked early, before search/math, since it's an
+    // explicit system command rather than something to look up or compute.
+    const tierMatch = text.match(/\b(?:switch|set|change)\s+(?:mode|model|tier)\s+to\s+(\w+)\b/i)
+      || text.match(/\bswitch\s+to\s+(\w+)\s+mode\b/i);
+
+    if (tierMatch) {
+      const tier = normalizeTierAlias(tierMatch[1]);
+      if (tier) {
+        return {
+          shouldCallTool: true,
+          toolName: 'SET_MODEL_TIER',
+          confidence: 0.95,
+          params: { tier },
+          reasoning: `Autonomous reasoner detected a request to switch the active Groq model tier to "${tier}".`
+        };
+      }
+      // Recognized phrasing but an unrecognized tier word (e.g. "switch
+      // mode to insane") — fall through rather than guess.
+    }
+
+    // 3. Check for math queries (arithmetic through high-level math) —
     // checked before the web-search heuristics below, since e.g. "what is 5
     // plus 3" would otherwise match the "what is" search starter. Scoped
     // deliberately to math phrasing only, not a catch-all for trivia.
@@ -128,7 +151,7 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 3. Check for real-time Web Search / Info retrieval intents
+    // 4. Check for real-time Web Search / Info retrieval intents
     const searchStarters = [
       'what is', 'what are', 'who is', 'who was', 'where is', 'where are',
       'how to', 'how does', 'why is', 'why do', 'tell me about', 'find out',
@@ -156,7 +179,7 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 4. Direct Website Intent
+    // 5. Direct Website Intent
     const siteMap = ['youtube', 'github', 'reddit', 'twitter', 'wikipedia', 'amazon', 'gmail', 'maps'];
     for (const site of siteMap) {
       if (text.includes(site) && (text.includes('open') || text.includes('go to') || text.includes('show'))) {
@@ -170,7 +193,7 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 5. Default Conversational / System query
+    // 6. Default Conversational / System query
     return {
       shouldCallTool: false,
       toolName: 'CONVERSATIONAL',
