@@ -33,7 +33,8 @@
     "publish": {
       "provider": "github",
       "owner": "Taksh-Biyani",
-      "repo": "jarvis-voice-ai"
+      "repo": "jarvis-voice-ai",
+      "draft": false
     },
     "files": [
       "dist/**/*",
