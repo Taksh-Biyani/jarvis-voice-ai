@@ -141,7 +141,7 @@ function initApp() {
         wakeTimeoutId = setTimeout(() => {
           conversationController.onWakeTimeout();
           if (transcriptDisplay) transcriptDisplay.textContent = 'Say "Jarvis" to give a command...';
-        }, 8000);
+        }, conversationController.wakeTimeoutMs);
         return;
       }
 
@@ -159,7 +159,7 @@ function initApp() {
           conversationController.onConversationTimeout();
           voiceEngine.playBeep(500, 0.12, 'sine');
           if (transcriptDisplay) transcriptDisplay.textContent = 'Conversation ended. Say "Jarvis" to start.';
-        }, 120000);
+        }, conversationController.conversationTimeoutMs);
         jarvis.processUserInput(result.command);
         return;
       }
