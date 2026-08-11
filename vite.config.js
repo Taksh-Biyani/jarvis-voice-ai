@@ -15,6 +15,11 @@ export default defineConfig({
         target: 'https://api.steampowered.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/steam-api/, '')
+      },
+      '/wolfram-api': {
+        target: 'https://api.wolframalpha.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/wolfram-api/, '')
       }
     }
   }

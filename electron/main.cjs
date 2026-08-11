@@ -231,6 +231,31 @@ function registerSteamIpc() {
   });
 }
 
+function registerWolframIpc() {
+  // Same plain-Node-HTTPS-in-main-process trick as registerSteamIpc, to avoid
+  // browser CORS entirely for the packaged app.
+  ipcMain.handle('wolfram:solve', (event, { appId, query }) => {
+    const url = `https://api.wolframalpha.com/v1/spoken?appid=${encodeURIComponent(appId)}&i=${encodeURIComponent(query)}`;
+    return new Promise((resolve, reject) => {
+      https.get(url, (res) => {
+        let data = '';
+        res.on('data', (chunkData) => { data += chunkData; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
+          } else if (res.statusCode === 501) {
+            // WolframAlpha's documented response code for "no spoken result
+            // available for this query" — not an error, just no answer.
+            resolve(null);
+          } else {
+            reject(new Error(`WolframAlpha API HTTP ${res.statusCode}`));
+          }
+        });
+      }).on('error', reject);
+    });
+  });
+}
+
 function sendUpdateState(state) {
   if (mainWindow) mainWindow.webContents.send('update:state', state);
 }
@@ -313,6 +338,7 @@ app.whenReady().then(() => {
 
   registerSteamIpc();
   registerMicIpc();
+  registerWolframIpc();
   registerUpdaterEvents();
   registerUpdateIpc();
   createWindow();

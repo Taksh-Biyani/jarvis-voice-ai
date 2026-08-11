@@ -8,6 +8,7 @@ import { SteamHarness } from './steam-harness.js';
 import { AutonomousToolReasoner } from './autonomous-tool-reasoner.js';
 import { OpenRouterClient } from './openrouter-client.js';
 import { GroqClient } from './groq-client.js';
+import { WolframClient } from './wolfram-client.js';
 import { loadSettings } from './settings.js';
 
 export class JarvisCore {
@@ -41,6 +42,17 @@ export class JarvisCore {
       onLog: (logData) => this.onLog(logData)
     });
     this.groq = new GroqClient(groqApiKey, {
+      onLog: (logData) => this.onLog(logData)
+    });
+
+    // Instantiate WolframAlpha Client (optional — grounds math answers in a
+    // real computation instead of the LLM guessing; no key means MATH_QUERY
+    // just falls through to the normal LLM chat path)
+    const wolframAppId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WOLFRAM_APP_ID)
+      || localStorage.getItem('jarvis_wolfram_app_id')
+      || '';
+
+    this.wolfram = new WolframClient(wolframAppId, {
       onLog: (logData) => this.onLog(logData)
     });
 
@@ -169,7 +181,41 @@ export class JarvisCore {
       return;
     }
 
-    // 4. Handle Google Search Commands (Explicit or Autonomous)
+    // 4. Handle Math Queries via WolframAlpha
+    if (decision.toolName === 'MATH_QUERY') {
+      this._updateAgentState("agent-3", "COMPUTING", `Solving: "${decision.params.query}"`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const wolframAnswer = await this.wolfram.solve(decision.params.query);
+
+      // WolframAlpha's spoken result is already a complete, correct answer —
+      // speak it directly rather than routing it through the LLM, which
+      // could second-guess a right answer into a wrong one. No key
+      // configured or no result found both fall through to normal LLM chat.
+      let spokenResponse;
+      if (wolframAnswer) {
+        spokenResponse = wolframAnswer;
+      } else {
+        const llmAnswer = await this._chatWithActiveLLM(
+          `Answer this math question briefly and precisely as JARVIS, showing just the final answer, not your reasoning: ${decision.params.query}`,
+          this.conversationHistory
+        );
+        spokenResponse = llmAnswer || `I wasn't able to compute that one, Sir.`;
+      }
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'MATH_QUERY',
+        data: { query: decision.params.query, wolframAnswered: Boolean(wolframAnswer) }
+      });
+
+      this._updateAgentState("agent-3", "ACTIVE", `Computation complete: "${decision.params.query}"`);
+      this._pushHistory(input, spokenResponse);
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 5. Handle Google Search Commands (Explicit or Autonomous)
     if (decision.toolName === 'GOOGLE_SEARCH') {
       this._updateAgentState("agent-3", "SEARCHING", `Querying: "${decision.params.query}"`);
       this.voiceEngine.playSearchLaunchSound();
@@ -209,7 +255,7 @@ export class JarvisCore {
       return;
     }
 
-    // 5. Handle Direct Website Navigation
+    // 6. Handle Direct Website Navigation
     if (decision.toolName === 'OPEN_SITE') {
       this._updateAgentState("agent-3", "EXECUTING", `Navigating to website: ${decision.params.siteName}`);
       this.voiceEngine.playSearchLaunchSound();
@@ -228,7 +274,7 @@ export class JarvisCore {
       return;
     }
 
-    // 6. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
+    // 7. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
     this._updateAgentState("agent-6", "THINKING", "Querying OpenRouter LLM API...");
 
     let answerText = await this._chatWithActiveLLM(input, this.conversationHistory);

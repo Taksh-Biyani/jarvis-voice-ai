@@ -551,6 +551,7 @@ function initSettingsPanel() {
   const openrouterKeyInput = document.getElementById('openrouterKeyInput');
   const groqKeyInput = document.getElementById('groqKeyInput');
   const deepgramKeyInput = document.getElementById('deepgramKeyInput');
+  const wolframKeyInput = document.getElementById('wolframKeyInput');
   const apiKeysSaveBtn = document.getElementById('apiKeysSaveBtn');
   const apiKeysStatus = document.getElementById('apiKeysStatus');
 
@@ -572,6 +573,9 @@ function initSettingsPanel() {
   }
   if (deepgramKeyInput && localStorage.getItem('jarvis_deepgram_api_key')) {
     deepgramKeyInput.placeholder = '••••••••••••••••• (saved)';
+  }
+  if (wolframKeyInput && localStorage.getItem('jarvis_wolfram_app_id')) {
+    wolframKeyInput.placeholder = '••••••••••••••••• (saved)';
   }
 
   const openModal = () => settingsModal.classList.add('open');
@@ -623,6 +627,7 @@ function initSettingsPanel() {
       const openrouterKey = openrouterKeyInput ? openrouterKeyInput.value.trim() : '';
       const groqKey = groqKeyInput ? groqKeyInput.value.trim() : '';
       const deepgramKey = deepgramKeyInput ? deepgramKeyInput.value.trim() : '';
+      const wolframAppId = wolframKeyInput ? wolframKeyInput.value.trim() : '';
 
       if (openrouterKey) {
         localStorage.setItem('jarvis_openrouter_api_key', openrouterKey);
@@ -642,9 +647,15 @@ function initSettingsPanel() {
         deepgramKeyInput.value = '';
         deepgramKeyInput.placeholder = '••••••••••••••••• (saved)';
       }
+      if (wolframAppId) {
+        localStorage.setItem('jarvis_wolfram_app_id', wolframAppId);
+        if (jarvis) jarvis.wolfram.appId = wolframAppId;
+        wolframKeyInput.value = '';
+        wolframKeyInput.placeholder = '••••••••••••••••• (saved)';
+      }
 
       if (apiKeysStatus) {
-        if (openrouterKey || groqKey || deepgramKey) {
+        if (openrouterKey || groqKey || deepgramKey || wolframAppId) {
           apiKeysStatus.textContent = '✅ Saved.';
           apiKeysStatus.style.color = '#39ff14';
         } else {

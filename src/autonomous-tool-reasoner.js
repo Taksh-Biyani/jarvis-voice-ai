@@ -14,7 +14,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'OPEN_SITE' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -103,7 +103,32 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 2. Check for real-time Web Search / Info retrieval intents
+    // 2. Check for math queries (arithmetic through high-level math) —
+    // checked before the web-search heuristics below, since e.g. "what is 5
+    // plus 3" would otherwise match the "what is" search starter. Scoped
+    // deliberately to math phrasing only, not a catch-all for trivia.
+    const mathSymbolPattern = /\d\s*[+\-*/^]\s*\d|[√∫]/;
+    const mathKeywordPattern = /\b(calculate|solve for|square root of|cube root of|derivative of|integral of|factorial of|log of|logarithm of)\b/;
+    const mathPhrasePattern = /\b(plus|minus|times|multiplied by|divided by|to the power of|squared|cubed)\b/;
+    const percentPattern = /\d+\s*%\s*of\s*\d+|\d+\s*percent\s*of\s*\d+/;
+
+    const looksLikeMath =
+      mathSymbolPattern.test(text) ||
+      mathKeywordPattern.test(text) ||
+      percentPattern.test(text) ||
+      (mathPhrasePattern.test(text) && /\d/.test(text));
+
+    if (looksLikeMath) {
+      return {
+        shouldCallTool: true,
+        toolName: 'MATH_QUERY',
+        confidence: 0.9,
+        params: { query: input },
+        reasoning: "Autonomous reasoner classified query as a math computation, routing to WolframAlpha for a grounded answer."
+      };
+    }
+
+    // 3. Check for real-time Web Search / Info retrieval intents
     const searchStarters = [
       'what is', 'what are', 'who is', 'who was', 'where is', 'where are',
       'how to', 'how does', 'why is', 'why do', 'tell me about', 'find out',
@@ -131,7 +156,7 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 3. Direct Website Intent
+    // 4. Direct Website Intent
     const siteMap = ['youtube', 'github', 'reddit', 'twitter', 'wikipedia', 'amazon', 'gmail', 'maps'];
     for (const site of siteMap) {
       if (text.includes(site) && (text.includes('open') || text.includes('go to') || text.includes('show'))) {
@@ -145,7 +170,7 @@ export class AutonomousToolReasoner {
       }
     }
 
-    // 4. Default Conversational / System query
+    // 5. Default Conversational / System query
     return {
       shouldCallTool: false,
       toolName: 'CONVERSATIONAL',

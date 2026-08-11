@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('jarvisElectron', {
   isElectron: true,
   fetchSteamLibrary: (apiKey, steamId) => ipcRenderer.invoke('steam:fetch-owned-games', { apiKey, steamId }),
+  solveMath: (appId, query) => ipcRenderer.invoke('wolfram:solve', { appId, query }),
   mic: {
     start: () => ipcRenderer.invoke('mic:start'),
     stop: () => ipcRenderer.invoke('mic:stop'),

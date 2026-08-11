@@ -1,8 +1,9 @@
 # J.A.R.V.I.S. Voice AI
 
 A desktop voice assistant with wake-word listening ("Jarvis" / "Hey Jarvis"),
-OpenRouter-powered conversation, Google search automation, and a Steam game
-launcher — built as an Electron app with a HUD-style web UI.
+OpenRouter/Groq-powered conversation, Google search automation, WolframAlpha-
+grounded math, a Steam game launcher, and self-updating via GitHub Releases
+— built as an Electron app with a HUD-style web UI.
 
 ## Setup
 
@@ -31,6 +32,7 @@ provide keys:
 | `VITE_OPENROUTER_API_KEY` | One of OpenRouter or Groq — powers conversational answers | https://openrouter.ai/keys |
 | `VITE_GROQ_API_KEY` | One of OpenRouter or Groq — much faster responses | https://console.groq.com/keys |
 | `VITE_DEEPGRAM_API_KEY` | Optional — better speech recognition | https://console.deepgram.com |
+| `VITE_WOLFRAM_APP_ID` | Optional — grounds math answers in a real computation instead of the LLM guessing | https://products.wolframalpha.com/api |
 | `VITE_STEAM_API_KEY` + `VITE_STEAM_ID` | Optional — launch games from your real library by name | https://steamcommunity.com/dev/apikey and https://steamid.io |
 
 Steam credentials have their own setup box in the left panel of the app —
@@ -50,9 +52,12 @@ Click **⚙️ SETTINGS** in the header to configure:
   reactor that reacts while JARVIS is speaking. It approximates loudness
   from speech cadence (word boundaries), not a literal decibel reading —
   browsers don't expose an audio stream for built-in text-to-speech.
-- **API Keys** — OpenRouter, Groq, and Deepgram, as described above.
-  OpenRouter and Groq key changes apply immediately; a newly added Deepgram
-  key requires restarting JARVIS to take effect.
+- **API Keys** — OpenRouter, Groq, Deepgram, and WolframAlpha, as described
+  above. OpenRouter, Groq, and WolframAlpha key changes apply immediately;
+  a newly added Deepgram key requires restarting JARVIS to take effect.
+  Without a WolframAlpha key, math questions ("what is 5 plus 3", "square
+  root of 144") are answered by whichever LLM is active instead — still
+  works, just not guaranteed to be arithmetically correct.
 - **Use Groq instead of OpenRouter** — Y/N. Groq's `llama-3.1-8b-instant` is
   much faster than OpenRouter's free model pool. This is only needed to
   *prefer* Groq when you have both keys set — if you only set a Groq key and
