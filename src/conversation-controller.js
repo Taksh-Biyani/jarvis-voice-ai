@@ -1,6 +1,6 @@
 const WAKE_WORD_REGEX = /^(?:hey[,]?\s+)?jarvis\b[,!.\s]*/i;
 const STOP_PHRASE_REGEX =
-  /^(?:(?:hey[,]?\s+)?jarvis[,!.\s]*)?(?:stop conversation|end conversation|that['']?s all|goodbye jarvis)[.!]?\s*$/i;
+  /^(?:(?:hey[,]?\s+)?jarvis[,!.\s]*)?(?:stop conversation|end conversation|that['’]?s all|goodbye jarvis)[.!]?\s*$/i;
 
 export class ConversationController {
   constructor({ wakeTimeoutMs = 8000, conversationTimeoutMs = 120000 } = {}) {

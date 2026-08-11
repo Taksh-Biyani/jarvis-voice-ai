@@ -92,7 +92,7 @@ test('a stop phrase with a curly (typographic) apostrophe still ends the convers
   const controller = new ConversationController();
   controller.handleTranscript('Hey Jarvis, play Dota');
 
-  const result = controller.handleTranscript("that's all");
+  const result = controller.handleTranscript('that’s all');
 
   assert.deepEqual(result, { action: 'END_CONVERSATION' });
   assert.equal(controller.isConversationActive, false);
