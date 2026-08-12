@@ -4,7 +4,7 @@
  * succeeds or the queue is exhausted. Used by both OpenRouterClient and
  * GroqClient, which only differ in baseUrl/headers/modelQueue/logPrefix.
  */
-export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messages, onLog = () => {}, logPrefix }) {
+export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messages, onLog = () => {}, logPrefix, temperature = 0.7, maxTokens = 350 }) {
   let lastError = null;
   for (const model of modelQueue) {
     try {
@@ -16,8 +16,8 @@ export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messag
         body: JSON.stringify({
           model,
           messages,
-          temperature: 0.7,
-          max_tokens: 350
+          temperature,
+          max_tokens: maxTokens
         })
       });
 
