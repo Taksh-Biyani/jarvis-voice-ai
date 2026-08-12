@@ -48,15 +48,39 @@ test('resolveGame returns null when nothing matches anywhere', async () => {
   assert.equal(resolved, null);
 });
 
-test('launchGame uses resolveGame and navigates to steam://run/<appId> on a match', async () => {
+test('launchGame uses resolveGame and navigates to steam://run/<appId> on a dict match', async () => {
   resetWindow();
-  const harness = new SteamHarness();
+  const logs = [];
+  const harness = new SteamHarness({ onLog: (logData) => logs.push(logData) });
   harness.steamLibrary = { isConfigured: () => false };
 
   const result = await harness.launchGame('dota 2');
   assert.equal(result.success, true);
   assert.equal(result.appId, '570');
+  assert.equal(result.source, 'dict');
+  assert.equal(result.message, 'Launching Dota 2 on Steam, Sir.');
   assert.equal(global.window.location.href, 'steam://run/570');
+  assert.ok(logs.some((l) => l.message.includes('[STEAM DICT MATCH]')), 'expected a [STEAM DICT MATCH] log entry');
+});
+
+test('launchGame uses resolveGame and navigates to steam://run/<appId> on a steam_library match, with the library-specific message and log text', async () => {
+  resetWindow();
+  const logs = [];
+  const harness = new SteamHarness({ onLog: (logData) => logs.push(logData) });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '570', name: 'Dota 2', nameLower: 'dota 2' }],
+    fetchLibrary: async () => {},
+    findGame: (q) => (q.toLowerCase().includes('dota') ? { appid: '570', name: 'Dota 2' } : null)
+  };
+
+  const result = await harness.launchGame('dota');
+  assert.equal(result.success, true);
+  assert.equal(result.appId, '570');
+  assert.equal(result.source, 'steam_library');
+  assert.equal(result.message, 'Launching Dota 2, Sir.');
+  assert.equal(global.window.location.href, 'steam://run/570');
+  assert.ok(logs.some((l) => l.message.includes('[STEAM LIBRARY MATCH]')), 'expected a [STEAM LIBRARY MATCH] log entry');
 });
 
 test('launchGame falls back to the Steam Store search when resolveGame finds nothing', async () => {
