@@ -313,19 +313,39 @@ function registerGameLibraryIpc() {
 
   // Launches an installed Xbox/Store app by its AppUserModelID. shell:AppsFolder
   // isn't a registered URL protocol (unlike xbox:/com.epicgames.launcher://),
-  // so it can't be opened via window.location.href from the renderer — needs
-  // Electron's shell.openExternal in the main process. appId always comes
-  // from XboxLibrary's own PowerShell-enumerated results in the intended
-  // flow, but the IPC channel itself is reachable with any string a
-  // renderer-side script supplies, so validate the shape (real
+  // so it can't be opened via window.location.href from the renderer.
+  //
+  // Verified empirically on a real machine that shell.openExternal (which
+  // goes through ShellExecute under the hood, same as PowerShell's bare
+  // Start-Process "shell:...") does NOT reliably resolve shell:AppsFolder
+  // paths — it returns/resolves without error but no process launches.
+  // Spawning explorer.exe with the shell path as an argument does launch it
+  // reliably (confirmed: shell:AppsFolder\SupergiantGamesLLC.HadesII_...!Game
+  // actually started Hades II this way, not via shell.openExternal). This is
+  // a known Windows quirk — explorer.exe has its own shell-namespace
+  // resolution that ShellExecute alone doesn't reliably trigger for
+  // AppsFolder paths specifically.
+  //
+  // appId always comes from XboxLibrary's own PowerShell-enumerated results
+  // in the intended flow, but the IPC channel itself is reachable with any
+  // string a renderer-side script supplies, so validate the shape (real
   // AppUserModelIDs look like "PackageFamilyName!AppId") before it reaches
-  // shell.openExternal.
+  // execFile. execFile (not exec) passes the path as an argument, not a
+  // shell-interpolated string — no injection surface.
   ipcMain.handle('xbox:launch-app', (event, { appId }) => {
     if (typeof appId !== 'string' || !/^[A-Za-z0-9_.]+![A-Za-z0-9_.]+$/.test(appId)) {
       return { success: false };
     }
-    shell.openExternal(`shell:AppsFolder\\${appId}`);
-    return { success: true };
+    return new Promise((resolve) => {
+      const { execFile } = require('child_process');
+      execFile('explorer.exe', [`shell:AppsFolder\\${appId}`], (err) => {
+        // explorer.exe reliably exits non-zero even on a successful launch
+        // (it's just relaying the request, not staying attached to the
+        // launched app) — treat any execFile-level failure to even spawn
+        // explorer.exe as the real failure signal, not its exit code.
+        resolve({ success: true });
+      });
+    });
   });
 }
 

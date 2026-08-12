@@ -51,7 +51,13 @@ export class XboxHarness {
     }
 
     this.onLog({ type: 'HARNESS', message: `[XBOX LIBRARY MATCH] ${match.name} (${match.appId})` });
-    await window.jarvisElectron.xboxLaunchApp(match.appId);
+    const launchResult = await window.jarvisElectron.xboxLaunchApp(match.appId);
+
+    if (!launchResult || !launchResult.success) {
+      this.onLog({ type: 'WARNING', message: `[XBOX HARNESS] Launch bridge reported failure for ${match.name} (${match.appId}).` });
+      return { success: false, gameName: match.name, message: `I found ${match.name} in your Xbox library, Sir, but the launch failed.` };
+    }
+
     this.onLog({ type: 'SUCCESS', message: `[GAME LAUNCH PROTOCOL] shell:AppsFolder\\${match.appId}` });
 
     return {

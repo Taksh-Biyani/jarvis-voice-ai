@@ -63,3 +63,25 @@ test('launchGame reports failure when not running inside Electron, even with a m
 
   assert.equal(result.success, false);
 });
+
+test('launchGame reports failure when the Electron launch bridge itself reports failure, instead of silently claiming success', async () => {
+  // Regression test: an earlier version awaited the bridge call but never
+  // inspected its return value, so a real main-process failure (e.g. the
+  // appId shape validation in electron/main.cjs rejecting it) would still
+  // be reported to the user as a successful launch.
+  resetWindow({
+    jarvisElectron: {
+      isElectron: true,
+      xboxLaunchApp: async () => ({ success: false })
+    }
+  });
+  const xboxLibrary = {
+    fetchLibrary: async () => ([{ name: 'Hades II', appId: 'abc!Game' }]),
+    findGame: () => ({ name: 'Hades II', appId: 'abc!Game' })
+  };
+  const harness = new XboxHarness({ xboxLibrary });
+
+  const result = await harness.launchGame('hades 2');
+
+  assert.equal(result.success, false);
+});
