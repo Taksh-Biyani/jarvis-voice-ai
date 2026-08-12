@@ -6,9 +6,12 @@
  * without either, falls back to opening Spotify pre-searched for the query.
  */
 
+import { resolveWithLlmFallback } from './llm-entity-resolver.js';
+
 export class SpotifyHarness {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
+    this.resolveEntity = options.resolveEntity;
   }
 
   /**
@@ -123,7 +126,7 @@ export class SpotifyHarness {
    * Falls back to opening a plain Spotify search if not connected or no
    * match is found — never a dead end.
    */
-  async playFromLibrary({ kind, query }, clientId, clientSecret) {
+  async playFromLibrary({ kind, query, alternatives = [] }, clientId, clientSecret) {
     if (!this._isElectron() || !clientId || !clientSecret) {
       this.onLog({
         type: 'WARNING',
@@ -150,7 +153,17 @@ export class SpotifyHarness {
 
       const library = await this.getLibrary(clientId, clientSecret);
       const pool = kind === 'album' ? library.albums : library.playlists;
-      const match = this._findBestMatch(pool, query);
+      let match = this._findBestMatch(pool, query);
+      if (!match) {
+        match = await resolveWithLlmFallback({
+          query,
+          alternatives,
+          candidates: pool,
+          kind: `Spotify ${kind}`,
+          resolveEntity: this.resolveEntity,
+          onLog: this.onLog
+        });
+      }
 
       if (!match) {
         this.onLog({ type: 'WARNING', message: `[SPOTIFY LIBRARY] No ${kind} matched "${query}" in your library.` });
