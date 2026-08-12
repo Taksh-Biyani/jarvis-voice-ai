@@ -8,11 +8,11 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host --port 3000",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-dist-for-secrets.cjs",
     "preview": "vite preview",
     "electron": "electron .",
-    "electron:build": "vite build && electron-builder --win",
-    "electron:release": "vite build && electron-builder --win --publish always",
+    "electron:build": "vite build && node scripts/check-dist-for-secrets.cjs && electron-builder --win",
+    "electron:release": "vite build && node scripts/check-dist-for-secrets.cjs && electron-builder --win --publish always",
     "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
