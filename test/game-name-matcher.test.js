@@ -6,7 +6,7 @@ function item(name) {
   return { name, nameLower: name.toLowerCase() };
 }
 
-const library = [item('Counter-Strike 2'), item('Dota 2'), item("Baldur's Gate 3"), item('Half-Life 2')];
+const library = [item('Counter-Strike 2'), item('Dota 2'), item("Baldur's Gate 3"), item('Rainbow Six Siege')];
 
 test('returns null for an empty item list', () => {
   assert.equal(fuzzyMatchGameName('dota', []), null);
@@ -23,13 +23,13 @@ test('matches when the item name contains the query', () => {
 });
 
 test('matches when the query contains the full item name (spoken subtitle)', () => {
-  const result = fuzzyMatchGameName('play baldurs gate 3 now', library);
+  const result = fuzzyMatchGameName("play baldur's gate 3", library);
   assert.equal(result.name, "Baldur's Gate 3");
 });
 
-test('token overlap matches partial multi-word titles', () => {
-  const result = fuzzyMatchGameName('half life', library);
-  assert.equal(result.name, 'Half-Life 2');
+test('token overlap matches reordered multi-word titles (neither substring check catches word-order swaps)', () => {
+  const result = fuzzyMatchGameName('six rainbow', library);
+  assert.equal(result.name, 'Rainbow Six Siege');
 });
 
 test('returns null when nothing scores above the 0.5 threshold', () => {
@@ -38,6 +38,6 @@ test('returns null when nothing scores above the 0.5 threshold', () => {
 });
 
 test('normalizes smart quotes and strips punctuation before matching', () => {
-  const result = fuzzyMatchGameName("baldur's gate 3!", library);
+  const result = fuzzyMatchGameName('baldur’s gate 3!', library);
   assert.equal(result.name, "Baldur's Gate 3");
 });

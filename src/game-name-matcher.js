@@ -12,7 +12,7 @@ export function fuzzyMatchGameName(query, items) {
 
   const q = query.trim().toLowerCase()
     .replace(/['‘’]/g, "'")
-    .replace(/[^a-z0-9\s:-]/g, '');
+    .replace(/[^a-z0-9\s':-]/g, '');
 
   let bestMatch = null;
   let bestScore = 0;
@@ -20,7 +20,7 @@ export function fuzzyMatchGameName(query, items) {
   for (const item of items) {
     const name = item.nameLower
       .replace(/['‘’]/g, "'")
-      .replace(/[^a-z0-9\s:-]/g, '');
+      .replace(/[^a-z0-9\s':-]/g, '');
 
     if (name === q) {
       return item;
@@ -44,8 +44,8 @@ export function fuzzyMatchGameName(query, items) {
       continue;
     }
 
-    const qTokens = new Set(q.split(/[\s-]+/).filter(t => t.length > 2));
-    const nameTokens = name.split(/[\s-]+/).filter(t => t.length > 2);
+    const qTokens = new Set(q.split(/\s+/).filter(t => t.length > 2));
+    const nameTokens = name.split(/\s+/).filter(t => t.length > 2);
     if (qTokens.size > 0 && nameTokens.length > 0) {
       const overlap = nameTokens.filter(t => qTokens.has(t)).length;
       const score = overlap / Math.max(qTokens.size, nameTokens.length);
