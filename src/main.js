@@ -716,17 +716,13 @@ function initSettingsPanel() {
 
 /**
  * Reads the currently-saved Spotify Client ID/Secret the same way
- * JarvisCore does (VITE env var, falling back to Settings-saved
- * localStorage values) — kept local rather than reading off the `jarvis`
- * instance since these panels can init before it's constructed.
+ * JarvisCore does (Settings-saved localStorage values) — kept local rather
+ * than reading off the `jarvis` instance since these panels can init before
+ * it's constructed.
  */
 function getSavedSpotifyCredentials() {
-  const clientId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_ID)
-    || localStorage.getItem('jarvis_spotify_client_id')
-    || '';
-  const clientSecret = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_SECRET)
-    || localStorage.getItem('jarvis_spotify_client_secret')
-    || '';
+  const clientId = localStorage.getItem('jarvis_spotify_client_id') || '';
+  const clientSecret = localStorage.getItem('jarvis_spotify_client_secret') || '';
   return { clientId, clientSecret };
 }
 

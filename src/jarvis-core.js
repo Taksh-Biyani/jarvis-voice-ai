@@ -22,17 +22,12 @@ export class JarvisCore {
     this.onResponse = options.onResponse || (() => {});
     this.onSwarmUpdate = options.onSwarmUpdate || (() => {});
 
-    // Instantiate OpenRouter Client
-    // Priority: VITE env var (baked at build) > localStorage (set via UI, if configured)
-    const openRouterApiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OPENROUTER_API_KEY)
-      || localStorage.getItem('jarvis_openrouter_api_key')
-      || '';
+    // Instantiate OpenRouter Client (key set via the Settings UI, stored in localStorage)
+    const openRouterApiKey = localStorage.getItem('jarvis_openrouter_api_key') || '';
 
     // Instantiate Groq Client (optional — faster alternative to OpenRouter,
     // and a full substitute for it: see _chatWithActiveLLM)
-    const groqApiKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROQ_API_KEY)
-      || localStorage.getItem('jarvis_groq_api_key')
-      || '';
+    const groqApiKey = localStorage.getItem('jarvis_groq_api_key') || '';
 
     // OpenRouter is only "required" in the sense that at least one of the
     // two LLM providers needs a key — Groq alone is a fully valid setup.
@@ -51,9 +46,7 @@ export class JarvisCore {
     // Instantiate WolframAlpha Client (optional — grounds math answers in a
     // real computation instead of the LLM guessing; no key means MATH_QUERY
     // just falls through to the normal LLM chat path)
-    const wolframAppId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WOLFRAM_APP_ID)
-      || localStorage.getItem('jarvis_wolfram_app_id')
-      || '';
+    const wolframAppId = localStorage.getItem('jarvis_wolfram_app_id') || '';
 
     this.wolfram = new WolframClient(wolframAppId, {
       onLog: (logData) => this.onLog(logData)
@@ -67,12 +60,8 @@ export class JarvisCore {
     // Spotify credentials are optional — without them, playSong() falls back
     // to opening Spotify pre-searched instead of resolving+autoplaying the
     // exact track.
-    this.spotifyClientId = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_ID)
-      || localStorage.getItem('jarvis_spotify_client_id')
-      || '';
-    this.spotifyClientSecret = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPOTIFY_CLIENT_SECRET)
-      || localStorage.getItem('jarvis_spotify_client_secret')
-      || '';
+    this.spotifyClientId = localStorage.getItem('jarvis_spotify_client_id') || '';
+    this.spotifyClientSecret = localStorage.getItem('jarvis_spotify_client_secret') || '';
 
     this.spotifyHarness = new SpotifyHarness({
       onLog: (logData) => this.onLog(logData)

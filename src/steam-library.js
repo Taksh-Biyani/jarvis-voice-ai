@@ -9,13 +9,11 @@ export class SteamLibrary {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
 
-    // Priority: VITE env vars (baked at build) > localStorage (set via UI) > empty
+    // Priority: constructor override (tests) > localStorage (set via UI) > empty
     this.apiKey = options.apiKey
-      || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STEAM_API_KEY)
       || localStorage.getItem('jarvis_steam_api_key')
       || '';
     this.steamId = options.steamId
-      || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STEAM_ID)
       || localStorage.getItem('jarvis_steam_id')
       || '';
 

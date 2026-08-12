@@ -19,7 +19,6 @@ export class VoiceEngine {
     this.recognition = null;
     this.isElectronMic = Boolean(typeof window !== 'undefined' && window.jarvisElectron?.mic);
     this.deepgramApiKey = options.deepgramApiKey
-      || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPGRAM_API_KEY)
       || localStorage.getItem('jarvis_deepgram_api_key')
       || '';
     // Deepgram (if configured) beats both the Electron/Windows bridge and the
