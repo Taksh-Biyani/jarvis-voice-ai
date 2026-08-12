@@ -72,3 +72,29 @@ test('"open the new Xbox exclusive game" is not misrouted to XBOX_OPEN_CLIENT', 
   const decision = reasoner.evaluateIntent('open the new Xbox exclusive game');
   assert.notEqual(decision.toolName, 'XBOX_OPEN_CLIENT');
 });
+
+// Regression: speech-to-text commonly appends trailing punctuation
+// ("Open Xbox." rather than "open xbox"), and JARVIS's raw voice input is
+// capitalized ("Open Xbox." not "open xbox") — real bug found in production
+// where the anchored regex (added to fix the Epic Mickey/Xbox exclusive
+// collision above) didn't tolerate a trailing period, so "Open Xbox." fell
+// through to CONVERSATIONAL instead of matching XBOX_OPEN_CLIENT.
+test('"Open Xbox." (capitalized, trailing period, as real STT produces) still classifies as XBOX_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('Open Xbox.');
+  assert.equal(decision.toolName, 'XBOX_OPEN_CLIENT');
+});
+
+test('"Open Epic Games." (capitalized, trailing period) still classifies as EPIC_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('Open Epic Games.');
+  assert.equal(decision.toolName, 'EPIC_OPEN_CLIENT');
+});
+
+test('"xbox!" (trailing exclamation) still classifies as XBOX_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('xbox!');
+  assert.equal(decision.toolName, 'XBOX_OPEN_CLIENT');
+});
+
+test('"epic." (trailing period, bare word) still classifies as EPIC_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('epic.');
+  assert.equal(decision.toolName, 'EPIC_OPEN_CLIENT');
+});

@@ -184,12 +184,10 @@ export class AutonomousToolReasoner {
     // quest") aren't misrouted here. Unlike "spotify" (which essentially
     // never appears inside an unrelated phrase), "epic" is common enough in
     // game titles/marketing language that a bare text.includes('epic')
-    // check would misfire.
-    if (
-      text.match(/^(?:open|launch|lunch|start)\s+(?:the\s+)?epic(?:\s+games)?(?:\s+launcher)?$/i) ||
-      text === 'epic' ||
-      text === 'epic games'
-    ) {
+    // check would misfire. The verb is optional so the bare word alone
+    // ("epic", "epic games") also matches, and a trailing [.!]? tolerates
+    // punctuation speech-to-text commonly appends ("Open Epic Games.").
+    if (text.match(/^(?:(?:open|launch|lunch|start)\s+)?(?:the\s+)?epic(?:\s+games)?(?:\s+launcher)?[.!]?\s*$/i)) {
       return {
         shouldCallTool: true,
         toolName: 'EPIC_OPEN_CLIENT',
@@ -202,10 +200,7 @@ export class AutonomousToolReasoner {
     // 1d. Check for Xbox app commands — same anchored-match principle as
     // Epic above ("xbox" commonly appears in unrelated phrases like "the
     // new Xbox exclusive", so a loose substring check would misfire).
-    if (
-      text.match(/^(?:open|launch|lunch|start)\s+(?:the\s+)?xbox(?:\s+app)?$/i) ||
-      text === 'xbox'
-    ) {
+    if (text.match(/^(?:(?:open|launch|lunch|start)\s+)?(?:the\s+)?xbox(?:\s+app)?[.!]?\s*$/i)) {
       return {
         shouldCallTool: true,
         toolName: 'XBOX_OPEN_CLIENT',
