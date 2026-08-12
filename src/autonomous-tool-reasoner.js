@@ -16,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'EPIC_OPEN_CLIENT' | 'XBOX_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -178,6 +178,35 @@ export class AutonomousToolReasoner {
       };
     }
 
+    // 1c. Check for Epic Games Launcher commands — explicit "epic" mention
+    // required, same principle as the Spotify check above (never competes
+    // with the bare "play X" -> Steam fallback below).
+    if (text.includes('epic')) {
+      if (text.includes('open') || text.includes('launch') || text.includes('lunch') || text.includes('start') || text === 'epic' || text === 'epic games') {
+        return {
+          shouldCallTool: true,
+          toolName: 'EPIC_OPEN_CLIENT',
+          confidence: 0.93,
+          params: {},
+          reasoning: "Autonomous reasoner identified intent to open the Epic Games Launcher."
+        };
+      }
+    }
+
+    // 1d. Check for Xbox app commands — explicit "xbox" mention required,
+    // same principle as Spotify/Epic above.
+    if (text.includes('xbox')) {
+      if (text.includes('open') || text.includes('launch') || text.includes('lunch') || text.includes('start') || text === 'xbox') {
+        return {
+          shouldCallTool: true,
+          toolName: 'XBOX_OPEN_CLIENT',
+          confidence: 0.93,
+          params: {},
+          reasoning: "Autonomous reasoner identified intent to open the Xbox App."
+        };
+      }
+    }
+
     // 2. Check for gaming & Steam launch intents (implicit & explicit)
     const gamingKeywords = ['play', 'game', 'gaming', 'steam', 'csgo', 'cs2', 'dota', 'cyberpunk', 'elden ring', 'gta', 'apex', 'tf2', 'helldivers', 'pubg', 'rust', 'baldurs gate'];
     const gamingIntentDetected = gamingKeywords.some(kw => text.includes(kw));
@@ -242,7 +271,7 @@ export class AutonomousToolReasoner {
     const launchMatch = text.match(/(?:launch|lunch|start|run|open)\s+(?:the\s+game\s+|game\s+)?([a-z0-9][a-z0-9\s':\-]*)/i);
     if (launchMatch && launchMatch[1]) {
       const candidate = launchMatch[1].trim();
-      const nonGameTargets = ['steam', 'google', 'youtube', 'browser', 'chrome', 'reddit', 'github', 'twitter', 'wikipedia', 'amazon', 'gmail', 'maps'];
+      const nonGameTargets = ['steam', 'google', 'youtube', 'browser', 'chrome', 'reddit', 'github', 'twitter', 'wikipedia', 'amazon', 'gmail', 'maps', 'epic', 'epic games', 'xbox'];
       if (!nonGameTargets.includes(candidate)) {
         return {
           shouldCallTool: true,
