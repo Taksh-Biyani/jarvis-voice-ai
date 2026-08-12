@@ -85,3 +85,54 @@ test('launchGame reports failure when the Electron launch bridge itself reports 
 
   assert.equal(result.success, false);
 });
+
+test('launchGame asks the LLM fallback when the library fuzzy-match misses, and launches its pick', async () => {
+  resetWindow({
+    jarvisElectron: {
+      isElectron: true,
+      xboxLaunchApp: async (appId) => { global.window.__lastLaunchedAppId = appId; return { success: true }; }
+    }
+  });
+  const resolveCalls = [];
+  const xboxLibrary = {
+    fetchLibrary: async () => ([{ name: 'Hades II', appId: 'SupergiantGamesLLC.HadesII_q53c1yqmx7pha!Game' }]),
+    findGame: () => null // fast fuzzy-match misses
+  };
+  const harness = new XboxHarness({
+    xboxLibrary,
+    resolveEntity: async (args) => { resolveCalls.push(args); return 'Hades II'; }
+  });
+
+  const result = await harness.launchGame('hades to', ['hades two']);
+
+  assert.equal(result.success, true);
+  assert.equal(result.gameName, 'Hades II');
+  assert.equal(global.window.__lastLaunchedAppId, 'SupergiantGamesLLC.HadesII_q53c1yqmx7pha!Game');
+  assert.equal(resolveCalls.length, 1);
+  assert.equal(resolveCalls[0].kind, 'Xbox game to launch');
+  assert.deepEqual(resolveCalls[0].candidates, ['Hades II']);
+});
+
+test('launchGame reports failure when the LLM fallback also finds nothing', async () => {
+  resetWindow({ jarvisElectron: { isElectron: true, xboxLaunchApp: async () => { throw new Error('should not be called'); } } });
+  const xboxLibrary = {
+    fetchLibrary: async () => ([{ name: 'Hades II', appId: 'abc!Game' }]),
+    findGame: () => null
+  };
+  const harness = new XboxHarness({ xboxLibrary, resolveEntity: async () => 'NONE' });
+
+  const result = await harness.launchGame('some totally unowned title');
+
+  assert.equal(result.success, false);
+});
+
+test('launchGame does not consult resolveEntity when the library is empty', async () => {
+  resetWindow();
+  let called = false;
+  const xboxLibrary = { fetchLibrary: async () => ([]), findGame: () => null };
+  const harness = new XboxHarness({ xboxLibrary, resolveEntity: async () => { called = true; return 'irrelevant'; } });
+
+  await harness.launchGame('anything');
+
+  assert.equal(called, false, 'no candidates exist — the LLM must not be called');
+});
