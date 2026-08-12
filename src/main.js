@@ -727,13 +727,13 @@ function getSavedSpotifyCredentials() {
 }
 
 /**
- * Wires the Settings modal's "Spotify Account" section to the main-process
- * OAuth bridge (electron/preload.cjs -> electron/main.cjs), so JARVIS can
- * read the user's own playlists/saved albums. Hidden entirely outside
- * Electron, since the OAuth loopback server only runs in the main process.
+ * Wires the Settings modal's "Spotify Account" section to SpotifyHarness's
+ * OAuth methods (which themselves wrap electron/preload.cjs -> electron/main.cjs).
+ * Hidden entirely outside Electron, since the OAuth loopback server only runs
+ * in the main process.
  */
 function initSpotifyAccountPanel() {
-  if (typeof window === 'undefined' || !window.jarvisElectron?.spotifyAuth) return;
+  if (typeof window === 'undefined' || !window.jarvisElectron?.spotifyAuth || !jarvis) return;
 
   const section = document.getElementById('spotifyAccountSection');
   const statusEl = document.getElementById('spotifyAccountStatus');
@@ -752,9 +752,7 @@ function initSpotifyAccountPanel() {
     if (disconnectBtn) disconnectBtn.style.display = authenticated ? '' : 'none';
   };
 
-  window.jarvisElectron.spotifyAuth.status()
-    .then(({ authenticated }) => render(authenticated))
-    .catch(() => render(false));
+  jarvis.spotifyHarness.authStatus().then(({ authenticated }) => render(authenticated));
 
   connectBtn.addEventListener('click', async () => {
     const { clientId, clientSecret } = getSavedSpotifyCredentials();
@@ -774,7 +772,7 @@ function initSpotifyAccountPanel() {
     }
 
     try {
-      await window.jarvisElectron.spotifyAuth.login(clientId, clientSecret);
+      await jarvis.spotifyHarness.login(clientId, clientSecret);
       render(true);
     } catch (err) {
       if (statusEl) {
@@ -790,7 +788,7 @@ function initSpotifyAccountPanel() {
 
   if (disconnectBtn) {
     disconnectBtn.addEventListener('click', async () => {
-      await window.jarvisElectron.spotifyAuth.logout();
+      await jarvis.spotifyHarness.logout();
       render(false);
     });
   }

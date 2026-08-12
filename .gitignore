@@ -21,6 +21,9 @@ release/
 # Internal planning docs (superpowers skill specs/plans — not for end users)
 docs/superpowers/
 
+# graphify knowledge graph output (regenerable, machine-specific)
+graphify-out/
+
 # Logs
 *.log
 npm-debug.log*
