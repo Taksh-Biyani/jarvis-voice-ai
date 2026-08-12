@@ -142,36 +142,23 @@ export class SteamHarness {
   }
 
   /**
-   * Resolves a game name to an AppID and launches via steam://run/<id>.
-   * Priority: 1) Real Steam library (fuzzy)  2) Hardcoded dict  3) Store search fallback
+   * Resolves a game name to an AppID without launching it.
+   * Priority: 1) Real Steam library (fuzzy)  2) Hardcoded dict
+   * Returns { appId, name, source } or null.
    */
-  async launchGame(gameQuery) {
+  async resolveGame(gameQuery) {
     const cleanQuery = gameQuery.trim().toLowerCase();
 
-    // --- 1. Check user's real Steam library first ---
     if (this.steamLibrary && this.steamLibrary.isConfigured()) {
-      // Ensure library is loaded
       if (!this.steamLibrary.library.length) {
         await this.steamLibrary.fetchLibrary();
       }
       const libMatch = this.steamLibrary.findGame(gameQuery);
       if (libMatch) {
-        const steamRunUri = `steam://run/${libMatch.appid}`;
-        this.onLog({ type: 'HARNESS', message: `[STEAM LIBRARY MATCH] ${libMatch.name} (AppID: ${libMatch.appid})` });
-        this.onLog({ type: 'SUCCESS', message: `[GAME LAUNCH PROTOCOL] Executing: ${steamRunUri}` });
-        window.location.href = steamRunUri;
-        return {
-          success: true,
-          gameName: libMatch.name,
-          appId: libMatch.appid,
-          source: 'steam_library',
-          protocol: steamRunUri,
-          message: `Launching ${libMatch.name}, Sir.`
-        };
+        return { appId: libMatch.appid, name: libMatch.name, source: 'steam_library' };
       }
     }
 
-    // --- 2. Fall back to hardcoded dictionary ---
     let matchedGame = this.gameDatabase[cleanQuery];
     if (!matchedGame) {
       for (const [key, game] of Object.entries(this.gameDatabase)) {
@@ -181,23 +168,34 @@ export class SteamHarness {
         }
       }
     }
-
     if (matchedGame) {
-      const steamRunUri = `steam://run/${matchedGame.id}`;
-      this.onLog({ type: 'HARNESS', message: `[STEAM DICT MATCH] ${matchedGame.name} (AppID: ${matchedGame.id})` });
+      return { appId: matchedGame.id, name: matchedGame.name, source: 'dict' };
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolves a game name to an AppID and launches via steam://run/<id>.
+   * Falls back to a Steam Store search if resolveGame() finds nothing.
+   */
+  async launchGame(gameQuery) {
+    const resolved = await this.resolveGame(gameQuery);
+    if (resolved) {
+      const steamRunUri = `steam://run/${resolved.appId}`;
+      this.onLog({ type: 'HARNESS', message: `[STEAM ${resolved.source === 'steam_library' ? 'LIBRARY MATCH' : 'DICT MATCH'}] ${resolved.name} (AppID: ${resolved.appId})` });
       this.onLog({ type: 'SUCCESS', message: `[GAME LAUNCH PROTOCOL] Executing: ${steamRunUri}` });
       window.location.href = steamRunUri;
       return {
         success: true,
-        gameName: matchedGame.name,
-        appId: matchedGame.id,
-        source: 'dict',
+        gameName: resolved.name,
+        appId: resolved.appId,
+        source: resolved.source,
         protocol: steamRunUri,
-        message: `Launching ${matchedGame.name} on Steam, Sir.`
+        message: resolved.source === 'steam_library' ? `Launching ${resolved.name}, Sir.` : `Launching ${resolved.name} on Steam, Sir.`
       };
     }
 
-    // --- 3. Steam Store search fallback ---
     const storeSearchUrl = `https://store.steampowered.com/search/?term=${encodeURIComponent(gameQuery)}`;
     this.onLog({ type: 'WARNING', message: `[STEAM HARNESS] "${gameQuery}" not found. Opening Steam Store search.` });
     window.open(storeSearchUrl, '_blank', 'noopener,noreferrer');
