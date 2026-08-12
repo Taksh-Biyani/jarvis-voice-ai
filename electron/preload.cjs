@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('jarvisElectron', {
   isElectron: true,
   fetchSteamLibrary: (apiKey, steamId) => ipcRenderer.invoke('steam:fetch-owned-games', { apiKey, steamId }),
+  epicGetInstalledGames: () => ipcRenderer.invoke('epic:get-installed-games'),
+  xboxGetInstalledGames: () => ipcRenderer.invoke('xbox:get-installed-games'),
+  xboxLaunchApp: (appId) => ipcRenderer.invoke('xbox:launch-app', { appId }),
   solveMath: (appId, query) => ipcRenderer.invoke('wolfram:solve', { appId, query }),
   spotifyResolveTrack: (clientId, clientSecret, query) => ipcRenderer.invoke('spotify:resolve-track', { clientId, clientSecret, query }),
   spotifyAuth: {

@@ -241,6 +241,86 @@ function registerSteamIpc() {
   });
 }
 
+function registerGameLibraryIpc() {
+  const fsPromises = require('fs').promises;
+
+  // Reads Epic Games Launcher's local install manifests (one .item JSON file
+  // per installed game) — no network call, no credentials needed.
+  ipcMain.handle('epic:get-installed-games', async () => {
+    const manifestsDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
+    try {
+      const files = await fsPromises.readdir(manifestsDir);
+      const games = [];
+      for (const file of files) {
+        if (!file.endsWith('.item')) continue;
+        try {
+          const raw = await fsPromises.readFile(path.join(manifestsDir, file), 'utf8');
+          const m = JSON.parse(raw);
+          if (m.DisplayName && m.AppName && m.CatalogNamespace && m.CatalogItemId) {
+            games.push({
+              displayName: m.DisplayName,
+              appName: m.AppName,
+              catalogNamespace: m.CatalogNamespace,
+              catalogItemId: m.CatalogItemId
+            });
+          }
+        } catch (e) {
+          // One malformed/unreadable manifest shouldn't fail the whole scan.
+        }
+      }
+      return games;
+    } catch (e) {
+      // Epic not installed, or manifests folder doesn't exist yet.
+      return [];
+    }
+  });
+
+  // Get-AppxPackage narrows to real Store-signed packages (excludes
+  // frameworks/resource packages/system components); Get-StartApps gives
+  // the human-friendly display name. execFile (not exec) passes the script
+  // as a single argument, not a shell-interpolated string — no injection
+  // surface, no manual quote-escaping needed.
+  ipcMain.handle('xbox:get-installed-games', () => {
+    return new Promise((resolve) => {
+      const { execFile } = require('child_process');
+      const script = [
+        '$pkgs = Get-AppxPackage | Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and $_.SignatureKind -eq \'Store\' }',
+        '$apps = Get-StartApps',
+        '$out = foreach ($p in $pkgs) {',
+        '  $m = $apps | Where-Object { $_.AppID -like "$($p.PackageFamilyName)!*" } | Select-Object -First 1',
+        '  if ($m) { [PSCustomObject]@{ Name = $m.Name; AppID = $m.AppID } }',
+        '}',
+        '$out | ConvertTo-Json -Compress'
+      ].join('\n');
+
+      execFile(
+        'powershell',
+        ['-NoProfile', '-Command', script],
+        { timeout: 8000, windowsHide: true },
+        (err, stdout) => {
+          if (err || !stdout || !stdout.trim()) { resolve([]); return; }
+          try {
+            let parsed = JSON.parse(stdout);
+            if (!Array.isArray(parsed)) parsed = [parsed];
+            resolve(parsed.filter(a => a && a.Name && a.AppID).map(a => ({ name: a.Name, appId: a.AppID })));
+          } catch (e) {
+            resolve([]);
+          }
+        }
+      );
+    });
+  });
+
+  // Launches an installed Xbox/Store app by its AppUserModelID. shell:AppsFolder
+  // isn't a registered URL protocol (unlike xbox:/com.epicgames.launcher://),
+  // so it can't be opened via window.location.href from the renderer — needs
+  // Electron's shell.openExternal in the main process.
+  ipcMain.handle('xbox:launch-app', (event, { appId }) => {
+    shell.openExternal(`shell:AppsFolder\\${appId}`);
+    return { success: true };
+  });
+}
+
 function registerWolframIpc() {
   // Same plain-Node-HTTPS-in-main-process trick as registerSteamIpc, to avoid
   // browser CORS entirely for the packaged app.
@@ -661,6 +741,7 @@ app.whenReady().then(() => {
   });
 
   registerSteamIpc();
+  registerGameLibraryIpc();
   registerMicIpc();
   registerWolframIpc();
   registerSpotifyIpc();
