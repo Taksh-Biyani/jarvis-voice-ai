@@ -6,6 +6,8 @@
 
 import { SteamHarness } from './steam-harness.js';
 import { SpotifyHarness } from './spotify-harness.js';
+import { EpicGamesHarness } from './epic-games-harness.js';
+import { XboxHarness } from './xbox-harness.js';
 import { AutonomousToolReasoner } from './autonomous-tool-reasoner.js';
 import { OpenRouterClient } from './openrouter-client.js';
 import { GroqClient } from './groq-client.js';
@@ -67,6 +69,14 @@ export class JarvisCore {
       onLog: (logData) => this.onLog(logData)
     });
 
+    this.epicGamesHarness = new EpicGamesHarness({
+      onLog: (logData) => this.onLog(logData)
+    });
+
+    this.xboxHarness = new XboxHarness({
+      onLog: (logData) => this.onLog(logData)
+    });
+
     this.toolReasoner = new AutonomousToolReasoner({
       onLog: (logData) => this.onLog(logData)
     });
@@ -84,7 +94,9 @@ export class JarvisCore {
       { id: "agent-4", role: "Steam Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Steam Protocol Ready" },
       { id: "agent-5", role: "Autonomous Tool Reasoner", domain: "Intent Reasoning", status: "ACTIVE", calls: 0, lastAction: "Proactive Classifier Active" },
       { id: "agent-6", role: "OpenRouter LLM Intelligence", domain: "Neural Brain", status: "ACTIVE", calls: 0, lastAction: "OpenRouter Connected" },
-      { id: "agent-7", role: "Spotify Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Spotify Protocol Ready" }
+      { id: "agent-7", role: "Spotify Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Spotify Protocol Ready" },
+      { id: "agent-8", role: "Epic Games Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Epic Games Protocol Ready" },
+      { id: "agent-9", role: "Xbox Automation Agent", domain: "Desktop Execution", status: "ACTIVE", calls: 0, lastAction: "Xbox Protocol Ready" }
     ];
 
     // Local Conversational Knowledge Base Fallbacks
@@ -241,6 +253,44 @@ export class JarvisCore {
       });
 
       this._updateAgentState("agent-7", "ACTIVE", result.matchedName ? `Playing ${result.matchedName}` : `Searched Spotify for "${query}"`);
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 4b. Handle Epic Games Launcher Commands
+    if (decision.toolName === 'EPIC_OPEN_CLIENT') {
+      this._updateAgentState("agent-8", "EXECUTING", "Opening Epic Games Launcher");
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = this.epicGamesHarness.openApp();
+      const spokenResponse = result.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'EPIC_OPEN_CLIENT',
+        data: result
+      });
+
+      this._updateAgentState("agent-8", "ACTIVE", "Epic Games Launcher opened");
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 4c. Handle Xbox App Commands
+    if (decision.toolName === 'XBOX_OPEN_CLIENT') {
+      this._updateAgentState("agent-9", "EXECUTING", "Opening Xbox App");
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = this.xboxHarness.openApp();
+      const spokenResponse = result.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'XBOX_OPEN_CLIENT',
+        data: result
+      });
+
+      this._updateAgentState("agent-9", "ACTIVE", "Xbox App opened");
       await this.voiceEngine.speak(spokenResponse);
       return;
     }
