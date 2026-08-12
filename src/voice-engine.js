@@ -115,6 +115,7 @@ export class VoiceEngine {
     this.recognition.continuous = true;
     this.recognition.interimResults = true;
     this.recognition.lang = "en-US";
+    this.recognition.maxAlternatives = 3;
 
     this.recognition.onstart = () => {
       this.isListening = true;
@@ -141,11 +142,16 @@ export class VoiceEngine {
 
       let interimTranscript = '';
       let finalTranscript = '';
+      let finalAlternatives = [];
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
+        const result = event.results[i];
+        const transcript = result[0].transcript;
+        if (result.isFinal) {
           finalTranscript += transcript;
+          for (let j = 1; j < result.length; j++) {
+            if (result[j]?.transcript) finalAlternatives.push(result[j].transcript);
+          }
         } else {
           interimTranscript += transcript;
         }
@@ -155,7 +161,8 @@ export class VoiceEngine {
       if (currentText.trim()) {
         this.onTranscript({
           text: currentText,
-          isFinal: Boolean(finalTranscript)
+          isFinal: Boolean(finalTranscript),
+          alternatives: finalTranscript ? finalAlternatives : []
         });
       }
     };
