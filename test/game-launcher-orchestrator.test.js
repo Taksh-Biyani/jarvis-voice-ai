@@ -80,3 +80,72 @@ test('an empty (non-null) Xbox library skips straight to fetching Epic without c
 
   assert.ok(!calls.includes('xbox.findGame(fortnite)'), 'should not call findGame against an empty library');
 });
+
+function makeOrchestratorWithFallback({ steamLibraryGames = [], xboxGames = [], epicGames = [], resolveEntity }) {
+  const calls = [];
+  const steamHarness = {
+    steamLibrary: { library: steamLibraryGames },
+    resolveGame: async (q) => { calls.push(`steam.resolveGame(${q})`); return null; },
+    launchGame: async (q) => { calls.push(`steam.launchGame(${q})`); return { success: false, gameName: q, message: `not found: ${q}` }; }
+  };
+  const xboxLibrary = {
+    fetchLibrary: async () => { calls.push('xbox.fetchLibrary'); return xboxGames; },
+    findGame: (q) => { calls.push(`xbox.findGame(${q})`); return null; }
+  };
+  const epicGamesLibrary = {
+    fetchLibrary: async () => { calls.push('epic.fetchLibrary'); return epicGames; },
+    findGame: (q) => { calls.push(`epic.findGame(${q})`); return null; }
+  };
+  const xboxHarness = { launchGame: async (q) => { calls.push(`xbox.launchGame(${q})`); return { success: true, gameName: q, source: 'xbox' }; } };
+  const epicGamesHarness = { launchGame: async (q) => { calls.push(`epic.launchGame(${q})`); return { success: true, gameName: q, source: 'epic' }; } };
+
+  const orchestrator = new GameLauncherOrchestrator({ steamHarness, xboxHarness, epicGamesHarness, xboxLibrary, epicGamesLibrary, resolveEntity });
+  return { orchestrator, calls };
+}
+
+test('all-three-miss + combined LLM hit on Xbox dispatches to XboxHarness.launchGame with the resolved name', async () => {
+  const resolveCalls = [];
+  const { orchestrator, calls } = makeOrchestratorWithFallback({
+    steamLibraryGames: [{ name: 'Dota 2' }],
+    xboxGames: [{ name: 'Hades II' }],
+    epicGames: [{ name: 'Fortnite' }],
+    resolveEntity: async (args) => { resolveCalls.push(args); return 'Hades II'; }
+  });
+
+  const result = await orchestrator.launchGame('hades to', ['hades two']);
+
+  assert.equal(result.success, true);
+  assert.equal(result.gameName, 'Hades II');
+  assert.equal(result.source, 'xbox');
+  assert.ok(calls.includes('xbox.launchGame(Hades II)'), 'should dispatch using the LLM-resolved name, not the original query');
+  assert.equal(resolveCalls.length, 1);
+  assert.deepEqual(resolveCalls[0].candidates, ['Dota 2', 'Hades II', 'Fortnite']);
+  assert.equal(resolveCalls[0].kind, 'game to launch (any platform)');
+});
+
+test('all-three-miss + LLM returns NONE still falls through to steamHarness.launchGame', async () => {
+  const { orchestrator, calls } = makeOrchestratorWithFallback({
+    steamLibraryGames: [{ name: 'Dota 2' }],
+    xboxGames: [],
+    epicGames: [],
+    resolveEntity: async () => 'NONE'
+  });
+
+  const result = await orchestrator.launchGame('some totally unowned title');
+
+  assert.equal(result.success, false);
+  assert.ok(calls.includes('steam.launchGame(some totally unowned title)'));
+});
+
+test('no resolveEntity injected: falls straight through to steamHarness.launchGame without error', async () => {
+  const { orchestrator, calls } = makeOrchestratorWithFallback({
+    steamLibraryGames: [],
+    xboxGames: [],
+    epicGames: []
+  });
+
+  const result = await orchestrator.launchGame('anything');
+
+  assert.equal(result.success, false);
+  assert.ok(calls.includes('steam.launchGame(anything)'));
+});
