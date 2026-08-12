@@ -178,33 +178,41 @@ export class AutonomousToolReasoner {
       };
     }
 
-    // 1c. Check for Epic Games Launcher commands — explicit "epic" mention
-    // required, same principle as the Spotify check above (never competes
-    // with the bare "play X" -> Steam fallback below).
-    if (text.includes('epic')) {
-      if (text.includes('open') || text.includes('launch') || text.includes('lunch') || text.includes('start') || text === 'epic' || text === 'epic games') {
-        return {
-          shouldCallTool: true,
-          toolName: 'EPIC_OPEN_CLIENT',
-          confidence: 0.93,
-          params: {},
-          reasoning: "Autonomous reasoner identified intent to open the Epic Games Launcher."
-        };
-      }
+    // 1c. Check for Epic Games Launcher commands — anchored to the whole
+    // utterance (not a loose substring match) so real game titles or
+    // phrases that merely contain "epic" ("launch Epic Mickey", "epic
+    // quest") aren't misrouted here. Unlike "spotify" (which essentially
+    // never appears inside an unrelated phrase), "epic" is common enough in
+    // game titles/marketing language that a bare text.includes('epic')
+    // check would misfire.
+    if (
+      text.match(/^(?:open|launch|lunch|start)\s+(?:the\s+)?epic(?:\s+games)?(?:\s+launcher)?$/i) ||
+      text === 'epic' ||
+      text === 'epic games'
+    ) {
+      return {
+        shouldCallTool: true,
+        toolName: 'EPIC_OPEN_CLIENT',
+        confidence: 0.93,
+        params: {},
+        reasoning: "Autonomous reasoner identified intent to open the Epic Games Launcher."
+      };
     }
 
-    // 1d. Check for Xbox app commands — explicit "xbox" mention required,
-    // same principle as Spotify/Epic above.
-    if (text.includes('xbox')) {
-      if (text.includes('open') || text.includes('launch') || text.includes('lunch') || text.includes('start') || text === 'xbox') {
-        return {
-          shouldCallTool: true,
-          toolName: 'XBOX_OPEN_CLIENT',
-          confidence: 0.93,
-          params: {},
-          reasoning: "Autonomous reasoner identified intent to open the Xbox App."
-        };
-      }
+    // 1d. Check for Xbox app commands — same anchored-match principle as
+    // Epic above ("xbox" commonly appears in unrelated phrases like "the
+    // new Xbox exclusive", so a loose substring check would misfire).
+    if (
+      text.match(/^(?:open|launch|lunch|start)\s+(?:the\s+)?xbox(?:\s+app)?$/i) ||
+      text === 'xbox'
+    ) {
+      return {
+        shouldCallTool: true,
+        toolName: 'XBOX_OPEN_CLIENT',
+        confidence: 0.93,
+        params: {},
+        reasoning: "Autonomous reasoner identified intent to open the Xbox App."
+      };
     }
 
     // 2. Check for gaming & Steam launch intents (implicit & explicit)

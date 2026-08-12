@@ -48,3 +48,27 @@ test('"open xbox" does not fall through to the Steam broad-launch fallback', () 
   const decision = reasoner.evaluateIntent('open xbox');
   assert.equal(decision.toolName, 'XBOX_OPEN_CLIENT');
 });
+
+// "epic" and "xbox" are common enough substrings in real game titles and
+// everyday phrases (unlike "spotify") that a loose text.includes() check
+// would misroute these to EPIC_OPEN_CLIENT/XBOX_OPEN_CLIENT instead of a
+// real Steam game launch or a plain conversational/search response.
+test('"launch Epic Mickey" is not misrouted to EPIC_OPEN_CLIENT (routes to Steam instead)', () => {
+  const decision = reasoner.evaluateIntent('launch Epic Mickey');
+  assert.equal(decision.toolName, 'STEAM_LAUNCH_GAME');
+});
+
+test('"open epic mickey 2" is not misrouted to EPIC_OPEN_CLIENT (routes to Steam instead)', () => {
+  const decision = reasoner.evaluateIntent('open epic mickey 2');
+  assert.equal(decision.toolName, 'STEAM_LAUNCH_GAME');
+});
+
+test('"launch the new Xbox exclusive" is not misrouted to XBOX_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('launch the new Xbox exclusive');
+  assert.notEqual(decision.toolName, 'XBOX_OPEN_CLIENT');
+});
+
+test('"open the new Xbox exclusive game" is not misrouted to XBOX_OPEN_CLIENT', () => {
+  const decision = reasoner.evaluateIntent('open the new Xbox exclusive game');
+  assert.notEqual(decision.toolName, 'XBOX_OPEN_CLIENT');
+});
