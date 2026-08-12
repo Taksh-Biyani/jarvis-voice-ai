@@ -16,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'EPIC_OPEN_CLIENT' | 'XBOX_OPEN_CLIENT' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'EPIC_OPEN_CLIENT' | 'XBOX_OPEN_CLIENT' | 'XBOX_LAUNCH_GAME' | 'EPIC_LAUNCH_GAME' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -207,6 +207,32 @@ export class AutonomousToolReasoner {
         confidence: 0.93,
         params: {},
         reasoning: "Autonomous reasoner identified intent to open the Xbox App."
+      };
+    }
+
+    // 1e. Check for explicit "launch <game> on xbox/epic" targeting — mirrors
+    // Spotify's "play X on spotify" pattern. Trailing [.!]?\s*$ tolerates
+    // STT punctuation (see 633afaf, which fixed the same class of bug for
+    // the open-client intents above; applying the lesson here proactively).
+    const playOnXbox = text.match(/(?:launch|play|start)\s+(.+?)\s+(?:on|in|via|from)\s+xbox\b[.!]?\s*$/i);
+    if (playOnXbox && playOnXbox[1]) {
+      return {
+        shouldCallTool: true,
+        toolName: 'XBOX_LAUNCH_GAME',
+        confidence: 0.9,
+        params: { gameQuery: playOnXbox[1].trim() },
+        reasoning: `Autonomous reasoner detected intent to launch "${playOnXbox[1].trim()}" via Xbox.`
+      };
+    }
+
+    const playOnEpic = text.match(/(?:launch|play|start)\s+(.+?)\s+(?:on|in|via|from)\s+epic(?:\s+games)?\b[.!]?\s*$/i);
+    if (playOnEpic && playOnEpic[1]) {
+      return {
+        shouldCallTool: true,
+        toolName: 'EPIC_LAUNCH_GAME',
+        confidence: 0.9,
+        params: { gameQuery: playOnEpic[1].trim() },
+        reasoning: `Autonomous reasoner detected intent to launch "${playOnEpic[1].trim()}" via Epic Games.`
       };
     }
 
