@@ -21,9 +21,16 @@ try {
 }
 
 Register-ObjectEvent -InputObject $recognizer -EventName SpeechRecognized -Action {
-  $text = $Event.SourceEventArgs.Result.Text
+  $result = $Event.SourceEventArgs.Result
+  $text = $result.Text
   if ($text) {
-    $json = (@{ type = 'final'; text = $text } | ConvertTo-Json -Compress)
+    $alts = @()
+    try {
+      $alts = @($result.Alternates | Select-Object -First 3 -ExpandProperty Text | Where-Object { $_ -and $_ -ne $text })
+    } catch {
+      $alts = @()
+    }
+    $json = (@{ type = 'final'; text = $text; alternatives = $alts } | ConvertTo-Json -Compress)
     [Console]::Out.WriteLine($json)
     [Console]::Out.Flush()
   }

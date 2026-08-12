@@ -178,7 +178,7 @@ function startMic() {
       if (msg.type === 'ready') {
         mainWindow.webContents.send('mic:status', { status: 'listening', message: 'Listening for voice input (Windows Speech)...' });
       } else if (msg.type === 'final' || msg.type === 'interim') {
-        mainWindow.webContents.send('mic:transcript', { text: msg.text, isFinal: msg.type === 'final' });
+        mainWindow.webContents.send('mic:transcript', { text: msg.text, isFinal: msg.type === 'final', alternatives: msg.alternatives || [] });
       } else if (msg.type === 'error') {
         mainWindow.webContents.send('mic:status', { status: 'error', message: `Windows Speech Recognition error: ${msg.message}` });
         stopMic();

@@ -235,11 +235,11 @@ export class VoiceEngine {
   // onTranscript/onStateChange contract as the browser path — nothing else
   // in the app needs to know which engine is actually running.
   _initElectronMic() {
-    window.jarvisElectron.mic.onTranscript(({ text, isFinal }) => {
+    window.jarvisElectron.mic.onTranscript(({ text, isFinal, alternatives }) => {
       if (this.isSpeaking || this.suppressMic || (this.synthesis && this.synthesis.speaking)) return;
       if (text && text.trim()) {
         this._consecutiveErrors = 0;
-        this.onTranscript({ text, isFinal: Boolean(isFinal) });
+        this.onTranscript({ text, isFinal: Boolean(isFinal), alternatives: alternatives || [] });
       }
     });
 
@@ -282,7 +282,8 @@ export class VoiceEngine {
       punctuate: 'true',
       smart_format: 'true',
       interim_results: 'true',
-      endpointing: '300'
+      endpointing: '300',
+      alternatives: '3'
     });
     const socket = new WebSocket(`wss://api.deepgram.com/v1/listen?${params.toString()}`, ['token', this.deepgramApiKey]);
     this._deepgramSocket = socket;
@@ -312,11 +313,16 @@ export class VoiceEngine {
       } catch (e) {
         return;
       }
-      const alt = data.channel?.alternatives?.[0];
+      const alts = data.channel?.alternatives || [];
+      const alt = alts[0];
       if (!alt || !alt.transcript) return;
       if (this.isSpeaking || this.suppressMic || (this.synthesis && this.synthesis.speaking)) return;
       if (alt.transcript.trim()) {
-        this.onTranscript({ text: alt.transcript, isFinal: Boolean(data.is_final) });
+        this.onTranscript({
+          text: alt.transcript,
+          isFinal: Boolean(data.is_final),
+          alternatives: alts.slice(1).map(a => a.transcript).filter(Boolean)
+        });
       }
     };
 
