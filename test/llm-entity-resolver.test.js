@@ -63,6 +63,37 @@ test('returns null when the LLM responds with NONE', async () => {
   assert.equal(result, null);
 });
 
+test('logs that it is consulting the LLM before calling resolveEntity, and logs when the model finds no match', async () => {
+  const candidates = [{ name: 'Elden Ring' }, { name: 'Dota 2' }];
+  const logs = [];
+  const result = await resolveWithLlmFallback({
+    query: 'asdkjaslkdj',
+    candidates,
+    kind: 'game',
+    resolveEntity: async () => 'NONE',
+    onLog: (l) => logs.push(l)
+  });
+
+  assert.equal(result, null);
+  assert.ok(logs.some(l => l.message.includes('asking the LLM to pick from 2 candidate(s)')), 'should log before calling resolveEntity');
+  assert.ok(logs.some(l => l.message.includes('no plausible match')), 'should log when the model explicitly finds nothing');
+});
+
+test('logs when no LLM provider was available at all (resolveEntity returned a falsy, non-NONE value)', async () => {
+  const candidates = [{ name: 'Elden Ring' }];
+  const logs = [];
+  const result = await resolveWithLlmFallback({
+    query: 'eldn ring',
+    candidates,
+    kind: 'game',
+    resolveEntity: async () => null,
+    onLog: (l) => logs.push(l)
+  });
+
+  assert.equal(result, null);
+  assert.ok(logs.some(l => l.message.includes('No LLM provider available')));
+});
+
 test('returns null and logs a discard when the LLM invents a title not in the candidate list', async () => {
   const candidates = [{ name: 'Elden Ring' }];
   const logs = [];

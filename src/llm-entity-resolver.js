@@ -10,6 +10,8 @@
 export async function resolveWithLlmFallback({ query, alternatives = [], candidates, kind, resolveEntity, onLog = () => {} }) {
   if (!resolveEntity || !candidates || !candidates.length) return null;
 
+  onLog({ type: 'HARNESS', message: `[LLM ENTITY RESOLVER] Fast match missed for "${query}" (${kind}) — asking the LLM to pick from ${candidates.length} candidate(s).` });
+
   let picked;
   try {
     picked = await resolveEntity({ query, alternatives, candidates: candidates.map(c => c.name), kind });
@@ -18,7 +20,15 @@ export async function resolveWithLlmFallback({ query, alternatives = [], candida
     return null;
   }
 
-  if (!picked || picked.trim().toUpperCase() === 'NONE') return null;
+  if (!picked) {
+    onLog({ type: 'WARNING', message: `[LLM ENTITY RESOLVER] No LLM provider available (no API key configured) — skipping.` });
+    return null;
+  }
+
+  if (picked.trim().toUpperCase() === 'NONE') {
+    onLog({ type: 'WARNING', message: `[LLM ENTITY RESOLVER] Model found no plausible match for "${query}" among the candidates.` });
+    return null;
+  }
 
   const normalized = picked.trim().toLowerCase();
   const match = candidates.find(c => c.name.trim().toLowerCase() === normalized);
