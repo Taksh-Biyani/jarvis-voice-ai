@@ -18,21 +18,24 @@ export class ConversationController {
     return this._conversationActive;
   }
 
-  handleTranscript(text) {
+  handleTranscript(text, alternatives = []) {
+    const stripWake = (s) => s.replace(WAKE_WORD_REGEX, '').trim() || s.trim();
+    const cleanedAlternatives = alternatives.map(stripWake).filter(Boolean);
+
     if (this._conversationActive) {
       if (STOP_PHRASE_REGEX.test(text.trim())) {
         this._conversationActive = false;
         return { action: 'END_CONVERSATION' };
       }
-      const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
-      return { action: 'DISPATCH_COMMAND', command, conversationStarting: false, chime: false };
+      const command = stripWake(text);
+      return { action: 'DISPATCH_COMMAND', command, alternatives: cleanedAlternatives, conversationStarting: false, chime: false };
     }
 
     if (this._awaitingCommand) {
       this._awaitingCommand = false;
       this._conversationActive = true;
-      const command = text.replace(WAKE_WORD_REGEX, '').trim() || text.trim();
-      return { action: 'DISPATCH_COMMAND', command, conversationStarting: true, chime: false };
+      const command = stripWake(text);
+      return { action: 'DISPATCH_COMMAND', command, alternatives: cleanedAlternatives, conversationStarting: true, chime: false };
     }
 
     const wakeMatch = text.match(WAKE_WORD_REGEX);
@@ -43,7 +46,7 @@ export class ConversationController {
     const command = text.slice(wakeMatch[0].length).trim();
     if (command) {
       this._conversationActive = true;
-      return { action: 'DISPATCH_COMMAND', command, conversationStarting: true, chime: true };
+      return { action: 'DISPATCH_COMMAND', command, alternatives: cleanedAlternatives, conversationStarting: true, chime: true };
     }
 
     this._awaitingCommand = true;
