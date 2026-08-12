@@ -23,7 +23,14 @@ export class GameLauncherOrchestrator {
   }
 
   async launchGame(gameQuery, alternatives = []) {
-    const steamMatch = await this.steamHarness.resolveGame(gameQuery);
+    // skipLlmFallback: true — this is just the fast existence-check for the
+    // ordered chain, mirroring the Xbox/Epic checks below which also only
+    // use their raw fast fuzzy-matcher here. Reasoning about a mishearing is
+    // deferred entirely to the combined cross-platform LLM call further down,
+    // which sees every library at once — letting SteamHarness's own narrow,
+    // Steam-only LLM fallback fire here would let a merely-plausible Steam
+    // guess win by default before Xbox/Epic are ever considered.
+    const steamMatch = await this.steamHarness.resolveGame(gameQuery, [], { skipLlmFallback: true });
     if (steamMatch) {
       return this.steamHarness.launchGame(gameQuery);
     }
@@ -63,6 +70,10 @@ export class GameLauncherOrchestrator {
     }
 
     this.onLog({ type: 'HARNESS', message: `[GAME LAUNCHER] "${gameQuery}" not found on Steam, Xbox, or Epic. Falling back to Steam Store search.` });
-    return this.steamHarness.launchGame(gameQuery);
+    // Also skip Steam's own LLM fallback here — the combined cross-platform
+    // call just above already had its shot at reasoning about this query
+    // with full visibility; a narrower Steam-only re-guess adds nothing but
+    // risk of second-guessing that correct "nothing matches" conclusion.
+    return this.steamHarness.launchGame(gameQuery, [], { skipLlmFallback: true });
   }
 }

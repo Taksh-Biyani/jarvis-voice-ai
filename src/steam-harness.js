@@ -148,7 +148,7 @@ export class SteamHarness {
    * Priority: 1) Real Steam library (fuzzy)  2) Hardcoded dict
    * Returns { appId, name, source } or null.
    */
-  async resolveGame(gameQuery, alternatives = []) {
+  async resolveGame(gameQuery, alternatives = [], { skipLlmFallback = false } = {}) {
     const cleanQuery = gameQuery.trim().toLowerCase();
 
     if (this.steamLibrary && this.steamLibrary.isConfigured()) {
@@ -156,7 +156,7 @@ export class SteamHarness {
         await this.steamLibrary.fetchLibrary();
       }
       let libMatch = this.steamLibrary.findGame(gameQuery);
-      if (!libMatch) {
+      if (!libMatch && !skipLlmFallback) {
         libMatch = await resolveWithLlmFallback({
           query: gameQuery,
           alternatives,
@@ -191,8 +191,8 @@ export class SteamHarness {
    * Resolves a game name to an AppID and launches via steam://run/<id>.
    * Falls back to a Steam Store search if resolveGame() finds nothing.
    */
-  async launchGame(gameQuery, alternatives = []) {
-    const resolved = await this.resolveGame(gameQuery, alternatives);
+  async launchGame(gameQuery, alternatives = [], options = {}) {
+    const resolved = await this.resolveGame(gameQuery, alternatives, options);
     if (resolved) {
       const steamRunUri = `steam://run/${resolved.appId}`;
       this.onLog({ type: 'HARNESS', message: `[STEAM ${resolved.source === 'steam_library' ? 'LIBRARY MATCH' : 'DICT MATCH'}] ${resolved.name} (AppID: ${resolved.appId})` });

@@ -81,12 +81,14 @@ test('an empty (non-null) Xbox library skips straight to fetching Epic without c
   assert.ok(!calls.includes('xbox.findGame(fortnite)'), 'should not call findGame against an empty library');
 });
 
-function makeOrchestratorWithFallback({ steamLibraryGames = [], xboxGames = [], epicGames = [], resolveEntity }) {
+function makeOrchestratorWithFallback({ steamLibraryGames = [], xboxGames = [], epicGames = [], resolveEntity, steamResolveGameResult = null }) {
   const calls = [];
+  const resolveGameCalls = [];
+  const launchGameCalls = [];
   const steamHarness = {
     steamLibrary: { library: steamLibraryGames },
-    resolveGame: async (q) => { calls.push(`steam.resolveGame(${q})`); return null; },
-    launchGame: async (q) => { calls.push(`steam.launchGame(${q})`); return { success: false, gameName: q, message: `not found: ${q}` }; }
+    resolveGame: async (q, alts, options) => { calls.push(`steam.resolveGame(${q})`); resolveGameCalls.push({ q, alts, options }); return steamResolveGameResult; },
+    launchGame: async (q, alts, options) => { calls.push(`steam.launchGame(${q})`); launchGameCalls.push({ q, alts, options }); return { success: false, gameName: q, message: `not found: ${q}` }; }
   };
   const xboxLibrary = {
     fetchLibrary: async () => { calls.push('xbox.fetchLibrary'); return xboxGames; },
@@ -100,8 +102,42 @@ function makeOrchestratorWithFallback({ steamLibraryGames = [], xboxGames = [], 
   const epicGamesHarness = { launchGame: async (q) => { calls.push(`epic.launchGame(${q})`); return { success: true, gameName: q, source: 'epic' }; } };
 
   const orchestrator = new GameLauncherOrchestrator({ steamHarness, xboxHarness, epicGamesHarness, xboxLibrary, epicGamesLibrary, resolveEntity });
-  return { orchestrator, calls };
+  return { orchestrator, calls, resolveGameCalls, launchGameCalls };
 }
+
+test('the initial Steam existence-check skips SteamHarness\'s own LLM fallback, so a plausible-but-wrong Steam guess never short-circuits the chain before Xbox/Epic are considered', async () => {
+  const resolveCalls = [];
+  const { orchestrator, resolveGameCalls } = makeOrchestratorWithFallback({
+    steamLibraryGames: [{ name: 'Terraria' }],
+    xboxGames: [{ name: 'Balatro' }],
+    epicGames: [],
+    resolveEntity: async (args) => { resolveCalls.push(args); return 'Balatro'; }
+  });
+
+  const result = await orchestrator.launchGame('velatro');
+
+  assert.equal(resolveGameCalls[0].options?.skipLlmFallback, true, 'the orchestrator\'s existence-check must ask SteamHarness to skip its own LLM fallback');
+  assert.equal(result.success, true);
+  assert.equal(result.gameName, 'Balatro');
+  assert.equal(result.source, 'xbox');
+  // Only the combined, cross-platform call should have consulted the LLM — never a Steam-only one.
+  assert.equal(resolveCalls.length, 1);
+  assert.deepEqual(resolveCalls[0].candidates, ['Terraria', 'Balatro']);
+});
+
+test('the terminal Steam Store-search fallback also skips SteamHarness\'s own LLM fallback, since the combined cross-platform call already had its shot', async () => {
+  const { orchestrator, resolveGameCalls, launchGameCalls } = makeOrchestratorWithFallback({
+    steamLibraryGames: [{ name: 'Terraria' }],
+    xboxGames: [],
+    epicGames: [],
+    resolveEntity: async () => 'NONE'
+  });
+
+  await orchestrator.launchGame('some totally unowned title');
+
+  assert.equal(resolveGameCalls[0].options?.skipLlmFallback, true, 'initial existence-check must skip Steam\'s own fallback');
+  assert.equal(launchGameCalls[0].options?.skipLlmFallback, true, 'terminal Store-search fallback must also skip Steam\'s own fallback');
+});
 
 test('all-three-miss + combined LLM hit on Xbox dispatches to XboxHarness.launchGame with the resolved name', async () => {
   const resolveCalls = [];

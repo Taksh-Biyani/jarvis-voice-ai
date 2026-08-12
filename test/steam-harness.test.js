@@ -164,3 +164,36 @@ test('resolveGame never calls resolveEntity when the fast fuzzy-match already hi
 
   assert.equal(called, false, 'the fast path already matched — the LLM fallback must not be consulted');
 });
+
+test('resolveGame never calls resolveEntity when skipLlmFallback is passed, even on a fast-match miss', async () => {
+  resetWindow();
+  let called = false;
+  const harness = new SteamHarness({ resolveEntity: async () => { called = true; return 'Terraria'; } });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '105600', name: 'Terraria', nameLower: 'terraria' }],
+    fetchLibrary: async () => {},
+    findGame: () => null
+  };
+
+  const resolved = await harness.resolveGame('velatro', [], { skipLlmFallback: true });
+
+  assert.equal(called, false, 'skipLlmFallback must suppress the LLM fallback entirely');
+  assert.equal(resolved, null);
+});
+
+test('launchGame forwards its options argument (e.g. skipLlmFallback) through to resolveGame', async () => {
+  resetWindow();
+  let called = false;
+  const harness = new SteamHarness({ resolveEntity: async () => { called = true; return 'Terraria'; } });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '105600', name: 'Terraria', nameLower: 'terraria' }],
+    fetchLibrary: async () => {},
+    findGame: () => null
+  };
+
+  await harness.launchGame('velatro', [], { skipLlmFallback: true });
+
+  assert.equal(called, false, 'launchGame must pass skipLlmFallback through to resolveGame');
+});
