@@ -167,7 +167,7 @@ export class JarvisCore {
   /**
    * Main entry point when a user speaks or submits a text prompt to JARVIS
    */
-  async processUserInput(rawInput) {
+  async processUserInput(rawInput, alternatives = []) {
     if (!rawInput || !rawInput.trim()) return;
 
     const input = rawInput.trim();
@@ -214,7 +214,7 @@ export class JarvisCore {
       this._updateAgentState("agent-4", "EXECUTING", `Launching game: ${decision.params.gameQuery}`);
       this.voiceEngine.playSearchLaunchSound();
 
-      const gameResult = await this.gameLauncherOrchestrator.launchGame(decision.params.gameQuery);
+      const gameResult = await this.gameLauncherOrchestrator.launchGame(decision.params.gameQuery, alternatives);
       const spokenResponse = gameResult.success ? "Launching, Sir." : gameResult.message;
 
       this.onResponse({
@@ -270,7 +270,7 @@ export class JarvisCore {
       this._updateAgentState("agent-7", "EXECUTING", kind === 'liked' ? 'Opening Liked Songs' : `Playing ${kind}: ${query}`);
       this.voiceEngine.playSearchLaunchSound();
 
-      const result = await this.spotifyHarness.playFromLibrary({ kind, query }, this.spotifyClientId, this.spotifyClientSecret);
+      const result = await this.spotifyHarness.playFromLibrary({ kind, query, alternatives }, this.spotifyClientId, this.spotifyClientSecret);
       const spokenResponse = result.message;
 
       this.onResponse({
@@ -327,7 +327,7 @@ export class JarvisCore {
       this._updateAgentState("agent-9", "EXECUTING", `Launching game on Xbox: ${decision.params.gameQuery}`);
       this.voiceEngine.playSearchLaunchSound();
 
-      const gameResult = await this.xboxHarness.launchGame(decision.params.gameQuery);
+      const gameResult = await this.xboxHarness.launchGame(decision.params.gameQuery, alternatives);
       const spokenResponse = gameResult.message;
 
       this.onResponse({
@@ -346,7 +346,7 @@ export class JarvisCore {
       this._updateAgentState("agent-8", "EXECUTING", `Launching game on Epic Games: ${decision.params.gameQuery}`);
       this.voiceEngine.playSearchLaunchSound();
 
-      const gameResult = await this.epicGamesHarness.launchGame(decision.params.gameQuery);
+      const gameResult = await this.epicGamesHarness.launchGame(decision.params.gameQuery, alternatives);
       const spokenResponse = gameResult.message;
 
       this.onResponse({

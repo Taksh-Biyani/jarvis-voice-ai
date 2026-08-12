@@ -66,3 +66,31 @@ test('a non-game query never touches the orchestrator or either new harness', as
 
   assert.equal(jarvis.gameLauncherCalls.length, 0);
 });
+
+test('processUserInput passes its alternatives argument through to GameLauncherOrchestrator.launchGame', async () => {
+  const jarvis = createJarvis();
+  const calls = [];
+  jarvis.gameLauncherOrchestrator.launchGame = async (query, alternatives) => {
+    calls.push({ query, alternatives });
+    return { success: true, gameName: 'Hollow Knight', message: 'Launching Hollow Knight, Sir.' };
+  };
+  jarvis.voiceEngine.speak = async () => {};
+
+  await jarvis.processUserInput('launch hollow knight', ['launch hallow night']);
+
+  assert.deepEqual(calls, [{ query: 'hollow knight', alternatives: ['launch hallow night'] }]);
+});
+
+test('processUserInput defaults alternatives to an empty array when omitted (typed/manual input)', async () => {
+  const jarvis = createJarvis();
+  const calls = [];
+  jarvis.gameLauncherOrchestrator.launchGame = async (query, alternatives) => {
+    calls.push(alternatives);
+    return { success: true, gameName: 'Hollow Knight', message: 'Launching Hollow Knight, Sir.' };
+  };
+  jarvis.voiceEngine.speak = async () => {};
+
+  await jarvis.processUserInput('launch hollow knight');
+
+  assert.deepEqual(calls, [[]]);
+});

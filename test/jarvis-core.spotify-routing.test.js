@@ -70,3 +70,18 @@ test('a non-Spotify query never calls the Spotify harness', async () => {
 
   assert.equal(jarvis.spotifyCalls.length, 0);
 });
+
+test('processUserInput passes its alternatives argument through to SpotifyHarness.playFromLibrary', async () => {
+  const jarvis = createJarvis();
+  const calls = [];
+  jarvis.spotifyHarness.playFromLibrary = async (args) => {
+    calls.push(args);
+    return { success: true, matchedName: 'Late Night Coding', message: 'Playing your playlist "Late Night Coding", Sir.' };
+  };
+  jarvis.voiceEngine.speak = async () => {};
+
+  await jarvis.processUserInput('play my late night coding playlist', ['play my late night coating playlist']);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].alternatives, ['play my late night coating playlist']);
+});
