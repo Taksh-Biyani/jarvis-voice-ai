@@ -121,11 +121,11 @@ function initApp() {
   });
 
   voiceEngine = new VoiceEngine({
-    onTranscript: ({ text, isFinal }) => {
+    onTranscript: ({ text, isFinal, alternatives = [] }) => {
       if (transcriptDisplay && !conversationController.isAwaitingCommand) transcriptDisplay.textContent = text;
       if (!isFinal || !jarvis) return;
 
-      const result = conversationController.handleTranscript(text);
+      const result = conversationController.handleTranscript(text, alternatives);
 
       if (result.action === 'IGNORE') {
         // Not addressed to JARVIS — ignore ambient speech while passively listening.
@@ -160,7 +160,7 @@ function initApp() {
           voiceEngine.playBeep(500, 0.12, 'sine');
           if (transcriptDisplay) transcriptDisplay.textContent = 'Conversation ended. Say "Jarvis" to start.';
         }, conversationController.conversationTimeoutMs);
-        jarvis.processUserInput(result.command);
+        jarvis.processUserInput(result.command, result.alternatives);
         return;
       }
 
