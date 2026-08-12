@@ -27,7 +27,7 @@ export class OpenRouterClient {
   /**
    * Attempts chat completion cycling through the model queue on failure.
    */
-  async generateCompletion(messages) {
+  async generateCompletion(messages, options = {}) {
     if (!this.apiKey) throw new Error("OpenRouter API Key not configured.");
 
     return fetchChatCompletion({
@@ -41,7 +41,9 @@ export class OpenRouterClient {
       modelQueue: this.modelQueue,
       messages,
       onLog: this.onLog,
-      logPrefix: 'OPENROUTER'
+      logPrefix: 'OPENROUTER',
+      temperature: options.temperature,
+      maxTokens: options.maxTokens
     });
   }
 
