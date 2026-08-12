@@ -5,6 +5,8 @@
  * so any owned game can be launched by voice.
  */
 
+import { fuzzyMatchGameName } from './game-name-matcher.js';
+
 export class SteamLibrary {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
@@ -128,59 +130,7 @@ export class SteamLibrary {
    * Returns the best match or null.
    */
   findGame(query) {
-    if (!this.library.length) return null;
-
-    const q = query.trim().toLowerCase()
-      .replace(/['']/g, "'")       // normalize smart quotes
-      .replace(/[^a-z0-9\s':-]/g, ''); // strip punctuation
-
-    let bestMatch = null;
-    let bestScore = 0;
-
-    for (const game of this.library) {
-      const name = game.nameLower
-        .replace(/['']/g, "'")
-        .replace(/[^a-z0-9\s':-]/g, '');
-
-      // Exact match
-      if (name === q) {
-        return game;
-      }
-
-      // Name contains the query
-      if (name.includes(q)) {
-        const score = q.length / name.length; // longer match = better score
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = game;
-        }
-        continue;
-      }
-
-      // Query contains the game name (e.g., saying full subtitle)
-      if (q.includes(name)) {
-        const score = name.length / q.length;
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = game;
-        }
-        continue;
-      }
-
-      // Token overlap scoring
-      const qTokens = new Set(q.split(/\s+/).filter(t => t.length > 2));
-      const nameTokens = name.split(/\s+/).filter(t => t.length > 2);
-      if (qTokens.size > 0 && nameTokens.length > 0) {
-        const overlap = nameTokens.filter(t => qTokens.has(t)).length;
-        const score = overlap / Math.max(qTokens.size, nameTokens.length);
-        if (score >= 0.5 && score > bestScore) {
-          bestScore = score;
-          bestMatch = game;
-        }
-      }
-    }
-
-    return bestScore >= 0.5 ? bestMatch : null;
+    return fuzzyMatchGameName(query, this.library);
   }
 
   _saveCache(library) {
