@@ -5,11 +5,13 @@
  */
 
 import { SteamLibrary } from './steam-library.js';
+import { resolveWithLlmFallback } from './llm-entity-resolver.js';
 
 export class SteamHarness {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
     this.onStatusUpdate = options.onStatusUpdate || (() => {});
+    this.resolveEntity = options.resolveEntity;
     this.steamLibrary = new SteamLibrary({ onLog: this.onLog });
 
     // Mapping of popular Steam game names and variations to Steam AppIDs
@@ -146,14 +148,24 @@ export class SteamHarness {
    * Priority: 1) Real Steam library (fuzzy)  2) Hardcoded dict
    * Returns { appId, name, source } or null.
    */
-  async resolveGame(gameQuery) {
+  async resolveGame(gameQuery, alternatives = []) {
     const cleanQuery = gameQuery.trim().toLowerCase();
 
     if (this.steamLibrary && this.steamLibrary.isConfigured()) {
       if (!this.steamLibrary.library.length) {
         await this.steamLibrary.fetchLibrary();
       }
-      const libMatch = this.steamLibrary.findGame(gameQuery);
+      let libMatch = this.steamLibrary.findGame(gameQuery);
+      if (!libMatch) {
+        libMatch = await resolveWithLlmFallback({
+          query: gameQuery,
+          alternatives,
+          candidates: this.steamLibrary.library,
+          kind: 'Steam game to launch',
+          resolveEntity: this.resolveEntity,
+          onLog: this.onLog
+        });
+      }
       if (libMatch) {
         return { appId: libMatch.appid, name: libMatch.name, source: 'steam_library' };
       }
@@ -179,8 +191,8 @@ export class SteamHarness {
    * Resolves a game name to an AppID and launches via steam://run/<id>.
    * Falls back to a Steam Store search if resolveGame() finds nothing.
    */
-  async launchGame(gameQuery) {
-    const resolved = await this.resolveGame(gameQuery);
+  async launchGame(gameQuery, alternatives = []) {
+    const resolved = await this.resolveGame(gameQuery, alternatives);
     if (resolved) {
       const steamRunUri = `steam://run/${resolved.appId}`;
       this.onLog({ type: 'HARNESS', message: `[STEAM ${resolved.source === 'steam_library' ? 'LIBRARY MATCH' : 'DICT MATCH'}] ${resolved.name} (AppID: ${resolved.appId})` });

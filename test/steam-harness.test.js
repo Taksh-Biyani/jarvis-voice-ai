@@ -94,3 +94,73 @@ test('launchGame falls back to the Steam Store search when resolveGame finds not
   assert.equal(result.success, false);
   assert.ok(openedUrl.startsWith('https://store.steampowered.com/search/?term='));
 });
+
+test('resolveGame asks the LLM fallback when the library fuzzy-match misses, and uses its pick', async () => {
+  resetWindow();
+  const resolveCalls = [];
+  const harness = new SteamHarness({
+    resolveEntity: async (args) => { resolveCalls.push(args); return 'Elden Ring'; }
+  });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '1245620', name: 'Elden Ring', nameLower: 'elden ring' }],
+    fetchLibrary: async () => {},
+    findGame: () => null // fast fuzzy-match always misses in this test
+  };
+
+  const resolved = await harness.resolveGame('eldn ring', ['eldon ring']);
+
+  assert.deepEqual(resolved, { appId: '1245620', name: 'Elden Ring', source: 'steam_library' });
+  assert.equal(resolveCalls.length, 1);
+  assert.equal(resolveCalls[0].query, 'eldn ring');
+  assert.deepEqual(resolveCalls[0].alternatives, ['eldon ring']);
+  assert.deepEqual(resolveCalls[0].candidates, ['Elden Ring']);
+  assert.equal(resolveCalls[0].kind, 'Steam game to launch');
+});
+
+test('resolveGame falls through to the dict when the LLM fallback returns NONE', async () => {
+  resetWindow();
+  const harness = new SteamHarness({ resolveEntity: async () => 'NONE' });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '1245620', name: 'Elden Ring', nameLower: 'elden ring' }],
+    fetchLibrary: async () => {},
+    findGame: () => null
+  };
+
+  const resolved = await harness.resolveGame('dota 2');
+
+  assert.equal(resolved.source, 'dict');
+  assert.equal(resolved.appId, '570');
+});
+
+test('resolveGame returns null when the LLM answer is not one of the real candidates', async () => {
+  resetWindow();
+  const harness = new SteamHarness({ resolveEntity: async () => 'Some Made Up Game' });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '1245620', name: 'Elden Ring', nameLower: 'elden ring' }],
+    fetchLibrary: async () => {},
+    findGame: () => null
+  };
+
+  const resolved = await harness.resolveGame('some totally unowned title');
+
+  assert.equal(resolved, null);
+});
+
+test('resolveGame never calls resolveEntity when the fast fuzzy-match already hit', async () => {
+  resetWindow();
+  let called = false;
+  const harness = new SteamHarness({ resolveEntity: async () => { called = true; return 'irrelevant'; } });
+  harness.steamLibrary = {
+    isConfigured: () => true,
+    library: [{ appid: '570', name: 'Dota 2', nameLower: 'dota 2' }],
+    fetchLibrary: async () => {},
+    findGame: (q) => (q.toLowerCase().includes('dota') ? { appid: '570', name: 'Dota 2' } : null)
+  };
+
+  await harness.resolveGame('dota');
+
+  assert.equal(called, false, 'the fast path already matched — the LLM fallback must not be consulted');
+});
