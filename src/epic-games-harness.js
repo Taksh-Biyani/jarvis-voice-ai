@@ -6,10 +6,13 @@
  * docs/superpowers/specs/2026-08-12-cross-platform-game-launcher-design.md.
  */
 
+import { resolveWithLlmFallback } from './llm-entity-resolver.js';
+
 export class EpicGamesHarness {
   constructor(options = {}) {
     this.onLog = options.onLog || (() => {});
     this.epicGamesLibrary = options.epicGamesLibrary;
+    this.resolveEntity = options.resolveEntity;
   }
 
   /**
@@ -34,9 +37,19 @@ export class EpicGamesHarness {
    * and launches it via com.epicgames.launcher://apps/<namespace>:<itemid>:<appname>.
    * No search-fallback when not found — see the design spec's Non-goals.
    */
-  async launchGame(gameQuery) {
+  async launchGame(gameQuery, alternatives = []) {
     const games = await this.epicGamesLibrary.fetchLibrary();
-    const match = games.length ? this.epicGamesLibrary.findGame(gameQuery) : null;
+    let match = games.length ? this.epicGamesLibrary.findGame(gameQuery) : null;
+    if (!match && games.length) {
+      match = await resolveWithLlmFallback({
+        query: gameQuery,
+        alternatives,
+        candidates: games,
+        kind: 'Epic Games game to launch',
+        resolveEntity: this.resolveEntity,
+        onLog: this.onLog
+      });
+    }
 
     if (!match) {
       this.onLog({ type: 'WARNING', message: `[EPIC GAMES HARNESS] "${gameQuery}" not found in your Epic Games library.` });
