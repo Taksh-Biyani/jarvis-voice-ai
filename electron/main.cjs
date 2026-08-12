@@ -242,7 +242,7 @@ function registerSteamIpc() {
 }
 
 function registerGameLibraryIpc() {
-  const fsPromises = require('fs').promises;
+  const fsPromises = fs.promises;
 
   // Reads Epic Games Launcher's local install manifests (one .item JSON file
   // per installed game) — no network call, no credentials needed.
@@ -294,7 +294,7 @@ function registerGameLibraryIpc() {
       ].join('\n');
 
       execFile(
-        'powershell',
+        'powershell.exe',
         ['-NoProfile', '-Command', script],
         { timeout: 8000, windowsHide: true },
         (err, stdout) => {
@@ -314,8 +314,16 @@ function registerGameLibraryIpc() {
   // Launches an installed Xbox/Store app by its AppUserModelID. shell:AppsFolder
   // isn't a registered URL protocol (unlike xbox:/com.epicgames.launcher://),
   // so it can't be opened via window.location.href from the renderer — needs
-  // Electron's shell.openExternal in the main process.
+  // Electron's shell.openExternal in the main process. appId always comes
+  // from XboxLibrary's own PowerShell-enumerated results in the intended
+  // flow, but the IPC channel itself is reachable with any string a
+  // renderer-side script supplies, so validate the shape (real
+  // AppUserModelIDs look like "PackageFamilyName!AppId") before it reaches
+  // shell.openExternal.
   ipcMain.handle('xbox:launch-app', (event, { appId }) => {
+    if (typeof appId !== 'string' || !/^[A-Za-z0-9_.]+![A-Za-z0-9_.]+$/.test(appId)) {
+      return { success: false };
+    }
     shell.openExternal(`shell:AppsFolder\\${appId}`);
     return { success: true };
   });
