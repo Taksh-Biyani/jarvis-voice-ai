@@ -1,7 +1,7 @@
 {
   "name": "jarvis-voice-ai",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "JARVIS voice AI desktop assistant",
   "author": "Jarvis Voice AI",
   "type": "module",
