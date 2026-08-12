@@ -59,7 +59,8 @@ export class JarvisCore {
 
     // Instantiate Steam Harness & Autonomous Tool Reasoner
     this.steamHarness = new SteamHarness({
-      onLog: (logData) => this.onLog(logData)
+      onLog: (logData) => this.onLog(logData),
+      resolveEntity: (args) => this._resolveEntityWithLLM(args)
     });
 
     // Spotify credentials are optional — without them, playSong() falls back
@@ -69,7 +70,8 @@ export class JarvisCore {
     this.spotifyClientSecret = localStorage.getItem('jarvis_spotify_client_secret') || '';
 
     this.spotifyHarness = new SpotifyHarness({
-      onLog: (logData) => this.onLog(logData)
+      onLog: (logData) => this.onLog(logData),
+      resolveEntity: (args) => this._resolveEntityWithLLM(args)
     });
 
     this.epicGamesLibrary = new EpicGamesLibrary({
@@ -82,12 +84,14 @@ export class JarvisCore {
 
     this.epicGamesHarness = new EpicGamesHarness({
       onLog: (logData) => this.onLog(logData),
-      epicGamesLibrary: this.epicGamesLibrary
+      epicGamesLibrary: this.epicGamesLibrary,
+      resolveEntity: (args) => this._resolveEntityWithLLM(args)
     });
 
     this.xboxHarness = new XboxHarness({
       onLog: (logData) => this.onLog(logData),
-      xboxLibrary: this.xboxLibrary
+      xboxLibrary: this.xboxLibrary,
+      resolveEntity: (args) => this._resolveEntityWithLLM(args)
     });
 
     this.gameLauncherOrchestrator = new GameLauncherOrchestrator({
@@ -96,7 +100,8 @@ export class JarvisCore {
       epicGamesHarness: this.epicGamesHarness,
       xboxLibrary: this.xboxLibrary,
       epicGamesLibrary: this.epicGamesLibrary,
-      onLog: (logData) => this.onLog(logData)
+      onLog: (logData) => this.onLog(logData),
+      resolveEntity: (args) => this._resolveEntityWithLLM(args)
     });
 
     this.toolReasoner = new AutonomousToolReasoner({
@@ -581,6 +586,59 @@ export class JarvisCore {
       if (groqAnswer) return groqAnswer;
     }
     return this.openRouter.chatWithJarvis(userInput, context);
+  }
+
+  /**
+   * Narrow, grounded classification call used by the entity-resolution
+   * fallback (see src/llm-entity-resolver.js) — picks the real target from a
+   * candidate list rather than generating a conversational reply. Uses the
+   * same Groq/OpenRouter provider-preference logic as _chatWithActiveLLM,
+   * but calls generateCompletion() directly (bypassing the JARVIS-persona
+   * prompt wrapper) with a low temperature and a short response budget.
+   */
+  async _resolveEntityWithLLM({ query, alternatives, candidates, kind }) {
+    const transcripts = [query, ...alternatives].filter(Boolean);
+    const messages = [
+      {
+        role: 'system',
+        content: 'You resolve possibly-mistranscribed voice commands to a real target from a known list. The user\'s speech-to-text engine produced one or more guesses at what they said. Pick which item from the CANDIDATES list the user almost certainly meant. Respond with ONLY the exact candidate text, character-for-character, and nothing else. If none of the candidates plausibly match, respond with exactly: NONE'
+      },
+      {
+        role: 'user',
+        content: `Speech-to-text guesses (best guess first): ${transcripts.map(t => `"${t}"`).join(', ')}\nContext: user is trying to select a ${kind}.\nCANDIDATES:\n${candidates.map(c => `- ${c}`).join('\n')}`
+      }
+    ];
+
+    const options = { temperature: 0.1, maxTokens: 30 };
+    const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
+
+    const tryGroq = async () => {
+      if (!this.groq.apiKey) return null;
+      try {
+        return await this.groq.generateCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[ENTITY RESOLVER] Groq failed: ${e.message}` });
+        return null;
+      }
+    };
+    const tryOpenRouter = async () => {
+      if (!this.openRouter.apiKey) return null;
+      try {
+        return await this.openRouter.generateCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[ENTITY RESOLVER] OpenRouter failed: ${e.message}` });
+        return null;
+      }
+    };
+
+    if (preferGroq) {
+      const groqAnswer = await tryGroq();
+      if (groqAnswer) return groqAnswer;
+      return tryOpenRouter();
+    }
+    const openRouterAnswer = await tryOpenRouter();
+    if (openRouterAnswer) return openRouterAnswer;
+    return tryGroq();
   }
 
   /**
