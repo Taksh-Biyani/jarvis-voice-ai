@@ -8,6 +8,9 @@ import { SteamHarness } from './steam-harness.js';
 import { SpotifyHarness } from './spotify-harness.js';
 import { EpicGamesHarness } from './epic-games-harness.js';
 import { XboxHarness } from './xbox-harness.js';
+import { EpicGamesLibrary } from './epic-games-library.js';
+import { XboxLibrary } from './xbox-library.js';
+import { GameLauncherOrchestrator } from './game-launcher-orchestrator.js';
 import { AutonomousToolReasoner } from './autonomous-tool-reasoner.js';
 import { OpenRouterClient } from './openrouter-client.js';
 import { GroqClient } from './groq-client.js';
@@ -69,11 +72,30 @@ export class JarvisCore {
       onLog: (logData) => this.onLog(logData)
     });
 
-    this.epicGamesHarness = new EpicGamesHarness({
+    this.epicGamesLibrary = new EpicGamesLibrary({
       onLog: (logData) => this.onLog(logData)
     });
 
+    this.xboxLibrary = new XboxLibrary({
+      onLog: (logData) => this.onLog(logData)
+    });
+
+    this.epicGamesHarness = new EpicGamesHarness({
+      onLog: (logData) => this.onLog(logData),
+      epicGamesLibrary: this.epicGamesLibrary
+    });
+
     this.xboxHarness = new XboxHarness({
+      onLog: (logData) => this.onLog(logData),
+      xboxLibrary: this.xboxLibrary
+    });
+
+    this.gameLauncherOrchestrator = new GameLauncherOrchestrator({
+      steamHarness: this.steamHarness,
+      xboxHarness: this.xboxHarness,
+      epicGamesHarness: this.epicGamesHarness,
+      xboxLibrary: this.xboxLibrary,
+      epicGamesLibrary: this.epicGamesLibrary,
       onLog: (logData) => this.onLog(logData)
     });
 
@@ -187,7 +209,7 @@ export class JarvisCore {
       this._updateAgentState("agent-4", "EXECUTING", `Launching game: ${decision.params.gameQuery}`);
       this.voiceEngine.playSearchLaunchSound();
 
-      const gameResult = await this.steamHarness.launchGame(decision.params.gameQuery);
+      const gameResult = await this.gameLauncherOrchestrator.launchGame(decision.params.gameQuery);
       const spokenResponse = gameResult.success ? "Launching, Sir." : gameResult.message;
 
       this.onResponse({
@@ -291,6 +313,44 @@ export class JarvisCore {
       });
 
       this._updateAgentState("agent-9", "ACTIVE", "Xbox App opened");
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 4d. Handle direct Xbox game-launch targeting ("launch X on xbox")
+    if (decision.toolName === 'XBOX_LAUNCH_GAME') {
+      this._updateAgentState("agent-9", "EXECUTING", `Launching game on Xbox: ${decision.params.gameQuery}`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const gameResult = await this.xboxHarness.launchGame(decision.params.gameQuery);
+      const spokenResponse = gameResult.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'XBOX_LAUNCH_GAME',
+        data: gameResult
+      });
+
+      this._updateAgentState("agent-9", "ACTIVE", gameResult.success ? `Launched ${gameResult.gameName}` : `Not found: ${decision.params.gameQuery}`);
+      await this.voiceEngine.speak(spokenResponse);
+      return;
+    }
+
+    // 4e. Handle direct Epic Games game-launch targeting ("launch X on epic")
+    if (decision.toolName === 'EPIC_LAUNCH_GAME') {
+      this._updateAgentState("agent-8", "EXECUTING", `Launching game on Epic Games: ${decision.params.gameQuery}`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const gameResult = await this.epicGamesHarness.launchGame(decision.params.gameQuery);
+      const spokenResponse = gameResult.message;
+
+      this.onResponse({
+        text: spokenResponse,
+        actionType: 'EPIC_LAUNCH_GAME',
+        data: gameResult
+      });
+
+      this._updateAgentState("agent-8", "ACTIVE", gameResult.success ? `Launched ${gameResult.gameName}` : `Not found: ${decision.params.gameQuery}`);
       await this.voiceEngine.speak(spokenResponse);
       return;
     }
