@@ -35,5 +35,10 @@ export function createJarvis(harnessOverrides = {}) {
     return `mock-answer:${jarvis.llmCalls.length}`;
   };
 
+  // Default: AI-first classification is "unavailable" so every test exercises
+  // the regex reasoner deterministically and never makes a real network call.
+  // Tests exercising the AI classification path override this directly.
+  jarvis._classifyIntentWithAI = async () => null;
+
   return jarvis;
 }
