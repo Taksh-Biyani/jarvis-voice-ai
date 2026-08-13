@@ -526,6 +526,59 @@ export class JarvisCore {
       return;
     }
 
+    // 8b. Handle Screen Monitoring Start
+    if (decision.toolName === 'SCREEN_MONITOR_START') {
+      this._updateAgentState("agent-3", "EXECUTING", "Arming screen monitoring");
+
+      const result = await this.screenVisionHarness.startMonitoring();
+
+      this.onResponse({
+        text: result.message,
+        actionType: 'SCREEN_MONITOR_START',
+        data: result
+      });
+
+      this._updateAgentState("agent-3", "ACTIVE", result.success ? "Screen monitoring active" : "Screen monitoring unavailable");
+      await this.voiceEngine.speak(result.message);
+      return;
+    }
+
+    // 8c. Handle Screen Monitoring Stop
+    if (decision.toolName === 'SCREEN_MONITOR_STOP') {
+      this._updateAgentState("agent-3", "EXECUTING", "Disarming screen monitoring");
+
+      const result = await this.screenVisionHarness.stopMonitoring();
+
+      this.onResponse({
+        text: result.message,
+        actionType: 'SCREEN_MONITOR_STOP',
+        data: result
+      });
+
+      this._updateAgentState("agent-3", "ACTIVE", "Screen monitoring inactive");
+      await this.voiceEngine.speak(result.message);
+      return;
+    }
+
+    // 8d. Handle Screen Vision Questions
+    if (decision.toolName === 'SCREEN_QUERY') {
+      this._updateAgentState("agent-3", "EXECUTING", `Reading screen: "${decision.params.question}"`);
+      this.voiceEngine.playSearchLaunchSound();
+
+      const result = await this.screenVisionHarness.askAboutScreen(decision.params.question);
+
+      this.onResponse({
+        text: result.message,
+        actionType: 'SCREEN_QUERY',
+        data: result
+      });
+
+      this._updateAgentState("agent-3", "ACTIVE", result.success ? "Screen question answered" : "Screen capture failed");
+      this._pushHistory(input, result.message);
+      await this.voiceEngine.speak(result.message);
+      return;
+    }
+
     // 9. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
     this._updateAgentState("agent-6", "THINKING", "Querying OpenRouter LLM API...");
 
