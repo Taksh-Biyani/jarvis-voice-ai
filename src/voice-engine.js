@@ -267,6 +267,15 @@ export class VoiceEngine {
   async _startDeepgram() {
     if (this._deepgramSocket) return; // already connecting/connected
 
+    // Per-session flag: did Deepgram ever confirm it decoded real audio out of
+    // what we sent it? Some environments produce a MediaRecorder stream that
+    // Deepgram accepts (valid auth, valid WebSocket) but can never decode —
+    // it then reports a Metadata message with duration 0 and closes cleanly
+    // (code 1000). That looks like success at the socket level, so without
+    // this flag the failure is invisible and the app just loops forever
+    // "listening" while never hearing anything.
+    this._dgSessionDecoded = false;
+
     try {
       this._micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
@@ -306,16 +315,25 @@ export class VoiceEngine {
     };
 
     socket.onmessage = (event) => {
-      this._consecutiveErrors = 0;
       let data;
       try {
         data = JSON.parse(event.data);
       } catch (e) {
         return;
       }
+
+      // Deepgram's end-of-stream summary. duration > 0 confirms it actually
+      // decoded audio this session, even on turns where nothing was said.
+      if (data.type === 'Metadata') {
+        if (data.duration > 0) this._dgSessionDecoded = true;
+        return;
+      }
+
       const alts = data.channel?.alternatives || [];
       const alt = alts[0];
       if (!alt || !alt.transcript) return;
+      this._dgSessionDecoded = true;
+      this._consecutiveErrors = 0;
       if (this.isSpeaking || this.suppressMic || (this.synthesis && this.synthesis.speaking)) return;
       if (alt.transcript.trim()) {
         this.onTranscript({
@@ -344,11 +362,32 @@ export class VoiceEngine {
 
       if (wasIntentional) return; // we closed this ourselves (stopListening/speak)
 
-      // Too many auth/connection failures in a row — stop instead of looping.
-      if (!event.wasClean && (this._consecutiveErrors || 0) >= 3) {
+      // A session that closes (cleanly or not) without Deepgram ever having
+      // decoded audio is a real failure, not a quiet timeout — count it.
+      if (!event.wasClean || !this._dgSessionDecoded) {
+        this._consecutiveErrors = (this._consecutiveErrors || 0) + 1;
+      }
+
+      // Too many failures in a row — Deepgram isn't usable here. Fall back to
+      // the built-in Windows mic bridge if this is Electron (it works
+      // independently of Deepgram), otherwise stop and tell the user why.
+      if ((this._consecutiveErrors || 0) >= 3) {
         this.autoRestart = false;
         this.continuousMode = false;
-        this.onStateChange({ status: "ERROR", message: "Deepgram connection kept failing — check your API key and network, then click the mic button to retry." });
+        this._consecutiveErrors = 0;
+        if (this.isElectronMic) {
+          this.engine = 'electron';
+          if (!this._electronMicInitialized) {
+            this._electronMicInitialized = true;
+            this._initElectronMic();
+          }
+          this.onStateChange({ status: "IDLE", message: "Deepgram never decoded any audio in this app — switched to the built-in Windows microphone." });
+          this.autoRestart = true;
+          this.continuousMode = true;
+          window.jarvisElectron.mic.start();
+        } else {
+          this.onStateChange({ status: "ERROR", message: "Deepgram never decoded any audio (no transcripts received) — check your microphone or Deepgram setup, then click the mic button to retry." });
+        }
         return;
       }
 
