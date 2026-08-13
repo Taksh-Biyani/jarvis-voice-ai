@@ -22,6 +22,7 @@ const SPOTIFY_AUTH_SCOPES = 'playlist-read-private playlist-read-collaborative u
 let mainWindow = null;
 let tray = null;
 let micProcess = null;
+let indicatorWindow = null;
 app.isQuitting = false;
 
 // Auto-download only kicks in for major bumps (see update-classify.cjs) —
@@ -122,6 +123,49 @@ function createTray() {
       mainWindow.focus();
     }
   });
+}
+
+function createIndicatorWindow() {
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const size = 16;
+  const margin = 8;
+
+  indicatorWindow = new BrowserWindow({
+    width: size,
+    height: size,
+    x: workArea.x + workArea.width - size - margin,
+    y: workArea.y + workArea.height - size - margin,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  indicatorWindow.setIgnoreMouseEvents(true, { forward: true });
+  indicatorWindow.loadFile(path.join(__dirname, 'indicator.html'));
+
+  indicatorWindow.on('closed', () => { indicatorWindow = null; });
+}
+
+function showIndicator() {
+  if (!indicatorWindow) createIndicatorWindow();
+  indicatorWindow.showInactive();
+}
+
+function hideIndicator() {
+  if (indicatorWindow) indicatorWindow.hide();
+}
+
+function registerScreenMonitorIpc() {
+  ipcMain.handle('screen:monitor-show', () => { showIndicator(); });
+  ipcMain.handle('screen:monitor-hide', () => { hideIndicator(); });
 }
 
 function configureAutoLaunch() {
@@ -794,6 +838,7 @@ app.whenReady().then(() => {
   registerGameLibraryIpc();
   registerMicIpc();
   registerScreenCaptureIpc();
+  registerScreenMonitorIpc();
   registerWolframIpc();
   registerSpotifyIpc();
   registerSpotifyAuthIpc();
