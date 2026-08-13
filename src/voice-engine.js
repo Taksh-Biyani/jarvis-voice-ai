@@ -286,7 +286,11 @@ export class VoiceEngine {
     }
 
     const params = new URLSearchParams({
-      model: 'nova-2',
+      // nova-2 is plan-gated: Deepgram silently accepts the connection and
+      // audio for it but never actually decodes anything on a trial key (every
+      // session reports duration 0 and closes cleanly, with no error frame).
+      // general is available on trial/free tiers and was verified end-to-end.
+      model: 'general',
       language: 'en-US',
       punctuate: 'true',
       smart_format: 'true',
