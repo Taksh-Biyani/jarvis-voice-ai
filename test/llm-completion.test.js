@@ -47,6 +47,21 @@ test('fetchChatCompletion forwards a custom temperature and maxTokens through to
   assert.equal(result, 'Elden Ring');
 });
 
+test('fetchChatCompletion merges extraBody fields into the request body', async () => {
+  const calls = mockFetchOnce({ choices: [{ message: { content: 'hello' } }] });
+
+  await fetchChatCompletion({
+    baseUrl: 'https://example.test/chat',
+    headers: {},
+    modelQueue: ['qwen/qwen3.6-27b'],
+    messages: [{ role: 'user', content: 'hi' }],
+    logPrefix: 'TEST',
+    extraBody: { reasoning_effort: 'none' }
+  });
+
+  assert.equal(calls[0].body.reasoning_effort, 'none');
+});
+
 test('fetchChatCompletion strips a closed <think>...</think> block and returns only the final answer', async () => {
   mockFetchOnce({ choices: [{ message: { content: '<think>let me work this out...</think>The answer is 1458.' } }] });
 

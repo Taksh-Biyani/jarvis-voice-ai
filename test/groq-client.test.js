@@ -22,6 +22,15 @@ test('generateVisionCompletion uses the dedicated vision model queue, not the te
   assert.notEqual(client.visionModelQueue[0], client.modelQueue[0]);
 });
 
+test('generateVisionCompletion disables chain-of-thought reasoning via reasoning_effort:"none"', async () => {
+  const calls = mockFetchOnce({ choices: [{ message: { content: 'A terminal window.' } }] });
+  const client = new GroqClient('fake-key');
+
+  await client.generateVisionCompletion([{ role: 'user', content: 'what is this?' }], { temperature: 0.3, maxTokens: 200 });
+
+  assert.equal(calls[0].body.reasoning_effort, 'none');
+});
+
 test('generateVisionCompletion throws when no API key is configured', async () => {
   const client = new GroqClient('');
   await assert.rejects(() => client.generateVisionCompletion([{ role: 'user', content: 'hi' }]), /API Key not configured/);

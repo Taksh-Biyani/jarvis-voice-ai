@@ -20,7 +20,7 @@ function stripThinkTags(content) {
  * succeeds or the queue is exhausted. Used by both OpenRouterClient and
  * GroqClient, which only differ in baseUrl/headers/modelQueue/logPrefix.
  */
-export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messages, onLog = () => {}, logPrefix, temperature = 0.7, maxTokens = 350 }) {
+export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messages, onLog = () => {}, logPrefix, temperature = 0.7, maxTokens = 350, extraBody = {} }) {
   let lastError = null;
   for (const model of modelQueue) {
     try {
@@ -33,7 +33,8 @@ export async function fetchChatCompletion({ baseUrl, headers, modelQueue, messag
           model,
           messages,
           temperature,
-          max_tokens: maxTokens
+          max_tokens: maxTokens,
+          ...extraBody
         })
       });
 

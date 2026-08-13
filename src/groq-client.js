@@ -63,6 +63,11 @@ export class GroqClient {
   /**
    * Vision-capable completion for screen-vision questions — see
    * docs/superpowers/specs/2026-08-12-screen-vision-and-ai-reasoner-design.md.
+   * reasoning_effort: 'none' disables qwen3.6-27b's chain-of-thought entirely
+   * (Groq-specific param, only meaningful for Qwen models) — a short spoken
+   * screen description doesn't need deep reasoning, and without this the
+   * model was burning its whole token budget on <think>...</think> and never
+   * reaching an actual answer.
    */
   async generateVisionCompletion(messages, options = {}) {
     if (!this.apiKey) throw new Error("Groq API Key not configured.");
@@ -78,7 +83,8 @@ export class GroqClient {
       onLog: this.onLog,
       logPrefix: 'GROQ VISION',
       temperature: options.temperature,
-      maxTokens: options.maxTokens
+      maxTokens: options.maxTokens,
+      extraBody: { reasoning_effort: 'none' }
     });
   }
 
