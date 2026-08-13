@@ -882,11 +882,41 @@ function initUpdatePanel() {
         return;
       }
       updateLogBox.style.display = '';
-      updateLogBox.value = 'Loading…';
+      updateLogBox.textContent = 'Loading…';
       const releases = await getChangelog();
-      updateLogBox.value = releases.length
-        ? releases.map((r) => `${r.version}\n${r.notes}`).join('\n\n')
-        : 'No update log available.';
+
+      updateLogBox.replaceChildren();
+      if (!releases.length) {
+        updateLogBox.textContent = 'No update log available.';
+        return;
+      }
+
+      releases.forEach((r) => {
+        const entry = document.createElement('div');
+        entry.style.marginBottom = '4px';
+
+        const header = document.createElement('div');
+        header.textContent = `▸ ${r.version}`;
+        header.style.cursor = 'pointer';
+        header.style.userSelect = 'none';
+
+        const notes = document.createElement('div');
+        notes.textContent = r.notes || 'No notes for this release.';
+        notes.style.whiteSpace = 'pre-wrap';
+        notes.style.display = 'none';
+        notes.style.padding = '4px 0 4px 16px';
+        notes.style.opacity = '0.85';
+
+        header.addEventListener('click', () => {
+          const expanded = notes.style.display !== 'none';
+          notes.style.display = expanded ? 'none' : '';
+          header.textContent = `${expanded ? '▸' : '▾'} ${r.version}`;
+        });
+
+        entry.appendChild(header);
+        entry.appendChild(notes);
+        updateLogBox.appendChild(entry);
+      });
     });
   }
 }
