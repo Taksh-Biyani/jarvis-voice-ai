@@ -5,7 +5,10 @@
  */
 
 export const MODEL_TIERS = {
-  quick: { model: 'llama-3.1-8b-instant', label: 'Quick' },
+  // llama-3.1-8b-instant is being decommissioned by Groq — openai/gpt-oss-20b
+  // is configured as its fallback (see getModelQueue) so quick-tier requests
+  // keep working once Groq turns it off, with no code change needed here.
+  quick: { model: 'llama-3.1-8b-instant', fallbackModels: ['openai/gpt-oss-20b'], label: 'Quick' },
   medium: { model: 'llama-3.3-70b-versatile', label: 'Medium' },
   high: { model: 'openai/gpt-oss-120b', label: 'High' },
   // Groq's agentic system — can autonomously invoke web search/code
@@ -15,6 +18,16 @@ export const MODEL_TIERS = {
 };
 
 export const TIER_ORDER = ['quick', 'medium', 'high', 'ultra'];
+
+/**
+ * Full ordered list of model IDs to try for a tier — the primary model
+ * followed by any configured fallbacks. Returns [] for an unknown tier.
+ */
+export function getModelQueue(tierKey) {
+  const tier = MODEL_TIERS[tierKey];
+  if (!tier) return [];
+  return [tier.model, ...(tier.fallbackModels || [])];
+}
 
 const ALIASES = {
   quick: 'quick', low: 'quick', fast: 'quick',

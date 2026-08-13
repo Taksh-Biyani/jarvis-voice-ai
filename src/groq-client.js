@@ -7,7 +7,7 @@
 
 import { fetchChatCompletion } from './llm-completion.js';
 import { buildJarvisMessages } from './llm-persona.js';
-import { MODEL_TIERS } from './model-tiers.js';
+import { MODEL_TIERS, getModelQueue } from './model-tiers.js';
 
 export class GroqClient {
   constructor(apiKey = '', options = {}) {
@@ -16,7 +16,7 @@ export class GroqClient {
     this.onLog = options.onLog || (() => {});
 
     this.currentTier = 'quick';
-    this.modelQueue = [MODEL_TIERS.quick.model];
+    this.modelQueue = getModelQueue('quick');
 
     // Dedicated single-model queue for screen-vision requests — most Groq
     // text models can't accept image content, so vision calls never touch
@@ -36,7 +36,7 @@ export class GroqClient {
     const tier = MODEL_TIERS[tierKey];
     if (!tier) return;
     this.currentTier = tierKey;
-    this.modelQueue = [tier.model];
+    this.modelQueue = getModelQueue(tierKey);
   }
 
   /**

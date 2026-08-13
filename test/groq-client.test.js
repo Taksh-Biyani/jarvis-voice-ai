@@ -11,6 +11,35 @@ function mockFetchOnce(responseBody) {
   return calls;
 }
 
+test('a fresh client defaults to the quick tier modelQueue, including its gpt-oss-20b fallback', () => {
+  const client = new GroqClient('fake-key');
+  assert.deepEqual(client.modelQueue, ['llama-3.1-8b-instant', 'openai/gpt-oss-20b']);
+});
+
+test('setTier rebuilds modelQueue with that tier\'s fallback chain', () => {
+  const client = new GroqClient('fake-key');
+  client.setTier('quick');
+  assert.deepEqual(client.modelQueue, ['llama-3.1-8b-instant', 'openai/gpt-oss-20b']);
+});
+
+test('generateCompletion retries with gpt-oss-20b when llama-3.1-8b-instant errors out', async () => {
+  const calls = [];
+  global.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body.model);
+    if (body.model === 'llama-3.1-8b-instant') {
+      return { ok: false, status: 400, json: async () => ({ error: { message: 'model_decommissioned' } }) };
+    }
+    return { ok: true, json: async () => ({ choices: [{ message: { content: 'fallback answer' } }] }) };
+  };
+  const client = new GroqClient('fake-key');
+
+  const result = await client.generateCompletion([{ role: 'user', content: 'hi' }]);
+
+  assert.equal(result, 'fallback answer');
+  assert.deepEqual(calls, ['llama-3.1-8b-instant', 'openai/gpt-oss-20b']);
+});
+
 test('generateVisionCompletion uses the dedicated vision model queue, not the text modelQueue', async () => {
   const calls = mockFetchOnce({ choices: [{ message: { content: 'A terminal window.' } }] });
   const client = new GroqClient('fake-key');
