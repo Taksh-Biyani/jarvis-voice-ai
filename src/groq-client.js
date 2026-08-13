@@ -20,9 +20,12 @@ export class GroqClient {
 
     // Dedicated single-model queue for screen-vision requests — most Groq
     // text models can't accept image content, so vision calls never touch
-    // the tier-based modelQueue above. Verify against console.groq.com/docs/models
-    // at release time in case Groq has renamed/deprecated this model.
-    this.visionModelQueue = ['meta-llama/llama-4-scout-17b-16e-instruct'];
+    // the tier-based modelQueue above. meta-llama/llama-4-scout-17b-16e-instruct
+    // was the original pick here but Groq deprecated it 2026-07-17; this is
+    // its documented replacement (console.groq.com/docs/deprecations),
+    // confirmed vision-capable (up to 5 images) as of 2026-08.  Re-verify
+    // against console.groq.com/docs/models if this ever errors again.
+    this.visionModelQueue = ['qwen/qwen3.6-27b'];
   }
 
   /**
