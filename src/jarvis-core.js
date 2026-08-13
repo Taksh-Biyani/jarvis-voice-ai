@@ -184,8 +184,18 @@ export class JarvisCore {
     this._updateAgentState("agent-1", "PROCESSING", `Routing request: "${input}"`);
     this._updateAgentState("agent-5", "EVALUATING", "Evaluating autonomous tool necessity");
 
-    // 2. Perform Autonomous Tool Calling Evaluation
-    const decision = this.toolReasoner.evaluateIntent(input);
+    // 2. Perform Autonomous Tool Calling Evaluation — AI-first, regex fallback.
+    // classifyIntentWithAI validates the response strictly (known toolName,
+    // required params present) before it's ever trusted; any doubt at all
+    // falls through to today's regex reasoner rather than risking a bad dispatch.
+    let decision = await classifyIntentWithAI({
+      input,
+      classifyIntent: (i) => this._classifyIntentWithAI(i),
+      onLog: this.onLog
+    });
+    if (!decision) {
+      decision = this.toolReasoner.evaluateIntent(input);
+    }
 
     this.onLog({
       type: 'HARNESS',
