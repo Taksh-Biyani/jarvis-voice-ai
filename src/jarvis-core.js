@@ -776,7 +776,12 @@ export class JarvisCore {
         ]
       }
     ];
-    const options = { temperature: 0.3, maxTokens: 200 };
+    // maxTokens is generous (not just enough for a 1-3 sentence answer)
+    // because some vision models (e.g. Groq's qwen/qwen3.6-27b) emit a
+    // <think>...</think> reasoning block before the real answer — too small
+    // a budget truncates mid-thought with no answer at all. See
+    // stripThinkTags in llm-completion.js, which strips that block out.
+    const options = { temperature: 0.3, maxTokens: 600 };
     const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
 
     const tryGroq = async () => {
