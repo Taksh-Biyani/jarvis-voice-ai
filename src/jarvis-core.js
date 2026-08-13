@@ -18,6 +18,7 @@ import { WolframClient } from './wolfram-client.js';
 import { MODEL_TIERS } from './model-tiers.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { classifyIntentWithAI, INTENT_CLASSIFIER_SYSTEM_PROMPT } from './ai-intent-classifier.js';
+import { ScreenVisionHarness } from './screen-vision-harness.js';
 
 export class JarvisCore {
   constructor(voiceEngine, harness, options = {}) {
@@ -107,6 +108,11 @@ export class JarvisCore {
 
     this.toolReasoner = new AutonomousToolReasoner({
       onLog: (logData) => this.onLog(logData)
+    });
+
+    this.screenVisionHarness = new ScreenVisionHarness({
+      onLog: (logData) => this.onLog(logData),
+      askVisionLLM: (args) => this._askVisionLLM(args)
     });
 
     // Short-term conversational memory: keeps the last few user/assistant turns
@@ -683,6 +689,58 @@ export class JarvisCore {
         return await this.openRouter.generateCompletion(messages, options);
       } catch (e) {
         this.onLog({ type: 'WARNING', message: `[AI INTENT CLASSIFIER] OpenRouter failed: ${e.message}` });
+        return null;
+      }
+    };
+
+    if (preferGroq) {
+      const groqAnswer = await tryGroq();
+      if (groqAnswer) return groqAnswer;
+      return tryOpenRouter();
+    }
+    const openRouterAnswer = await tryOpenRouter();
+    if (openRouterAnswer) return openRouterAnswer;
+    return tryGroq();
+  }
+
+  /**
+   * Screen-vision completion — same Groq/OpenRouter preferGroq pattern as
+   * _resolveEntityWithLLM and _classifyIntentWithAI, but calls the dedicated
+   * generateVisionCompletion() (a separate model queue — most text models
+   * can't accept image content) with an OpenAI-compatible vision message.
+   */
+  async _askVisionLLM({ question, imageDataUrl }) {
+    const messages = [
+      {
+        role: 'system',
+        content: "You are JARVIS, analyzing a screenshot of the user's screen. Answer their question about what is visible concisely (1-3 sentences), as JARVIS would speak it aloud. If the screenshot doesn't contain enough information to answer, say so honestly."
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: question },
+          { type: 'image_url', image_url: { url: imageDataUrl } }
+        ]
+      }
+    ];
+    const options = { temperature: 0.3, maxTokens: 200 };
+    const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
+
+    const tryGroq = async () => {
+      if (!this.groq.apiKey) return null;
+      try {
+        return await this.groq.generateVisionCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[SCREEN VISION] Groq failed: ${e.message}` });
+        return null;
+      }
+    };
+    const tryOpenRouter = async () => {
+      if (!this.openRouter.apiKey) return null;
+      try {
+        return await this.openRouter.generateVisionCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[SCREEN VISION] OpenRouter failed: ${e.message}` });
         return null;
       }
     };
