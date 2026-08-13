@@ -16,7 +16,7 @@ export class AutonomousToolReasoner {
    * Format returned:
    * {
    *    shouldCallTool: true|false,
-   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'EPIC_OPEN_CLIENT' | 'XBOX_OPEN_CLIENT' | 'XBOX_LAUNCH_GAME' | 'EPIC_LAUNCH_GAME' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'CONVERSATIONAL',
+   *    toolName: 'GOOGLE_SEARCH' | 'STEAM_LAUNCH_GAME' | 'STEAM_OPEN_CLIENT' | 'SPOTIFY_PLAY_SONG' | 'SPOTIFY_PLAY_LIBRARY' | 'SPOTIFY_OPEN_CLIENT' | 'EPIC_OPEN_CLIENT' | 'XBOX_OPEN_CLIENT' | 'XBOX_LAUNCH_GAME' | 'EPIC_LAUNCH_GAME' | 'OPEN_SITE' | 'MATH_QUERY' | 'SET_MODEL_TIER' | 'SCREEN_MONITOR_START' | 'SCREEN_MONITOR_STOP' | 'SCREEN_QUERY' | 'CONVERSATIONAL',
    *    confidence: 0.0 to 1.0,
    *    params: { ... },
    *    reasoning: "Explanation of autonomous decision"
@@ -233,6 +233,40 @@ export class AutonomousToolReasoner {
         confidence: 0.9,
         params: { gameQuery: playOnEpic[1].trim() },
         reasoning: `Autonomous reasoner detected intent to launch "${playOnEpic[1].trim()}" via Epic Games.`
+      };
+    }
+
+    // 1f. Check for screen monitoring/vision commands — a thin fallback net
+    // for when the AI-first classifier is unavailable (see ai-intent-classifier.js);
+    // doesn't need exhaustive phrasing coverage since AI handles the bulk of it.
+    if (text.match(/^(?:start|begin)\s+(?:monitoring|watching)\s+(?:my\s+|the\s+)?screen[.!]?\s*$/i)) {
+      return {
+        shouldCallTool: true,
+        toolName: 'SCREEN_MONITOR_START',
+        confidence: 0.93,
+        params: {},
+        reasoning: "Autonomous reasoner detected intent to arm screen monitoring."
+      };
+    }
+
+    if (text.match(/^(?:stop|end)\s+(?:monitoring|watching)\s+(?:my\s+|the\s+)?screen[.!]?\s*$/i)) {
+      return {
+        shouldCallTool: true,
+        toolName: 'SCREEN_MONITOR_STOP',
+        confidence: 0.93,
+        params: {},
+        reasoning: "Autonomous reasoner detected intent to disarm screen monitoring."
+      };
+    }
+
+    const screenQueryPattern = /what'?s on my screen|what is on my screen|what does (?:this|that) say|read (?:this|that)|what am i looking at|describe my screen|look at my screen|can you see my screen/i;
+    if (screenQueryPattern.test(text)) {
+      return {
+        shouldCallTool: true,
+        toolName: 'SCREEN_QUERY',
+        confidence: 0.85,
+        params: { question: input.trim() },
+        reasoning: "Autonomous reasoner detected a question about the contents of the screen."
       };
     }
 
