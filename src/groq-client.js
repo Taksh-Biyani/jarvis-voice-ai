@@ -17,6 +17,12 @@ export class GroqClient {
 
     this.currentTier = 'quick';
     this.modelQueue = [MODEL_TIERS.quick.model];
+
+    // Dedicated single-model queue for screen-vision requests — most Groq
+    // text models can't accept image content, so vision calls never touch
+    // the tier-based modelQueue above. Verify against console.groq.com/docs/models
+    // at release time in case Groq has renamed/deprecated this model.
+    this.visionModelQueue = ['meta-llama/llama-4-scout-17b-16e-instruct'];
   }
 
   /**
@@ -46,6 +52,28 @@ export class GroqClient {
       messages,
       onLog: this.onLog,
       logPrefix: 'GROQ',
+      temperature: options.temperature,
+      maxTokens: options.maxTokens
+    });
+  }
+
+  /**
+   * Vision-capable completion for screen-vision questions — see
+   * docs/superpowers/specs/2026-08-12-screen-vision-and-ai-reasoner-design.md.
+   */
+  async generateVisionCompletion(messages, options = {}) {
+    if (!this.apiKey) throw new Error("Groq API Key not configured.");
+
+    return fetchChatCompletion({
+      baseUrl: this.baseUrl,
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      modelQueue: this.visionModelQueue,
+      messages,
+      onLog: this.onLog,
+      logPrefix: 'GROQ VISION',
       temperature: options.temperature,
       maxTokens: options.maxTokens
     });
