@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('jarvisElectron', {
       return () => ipcRenderer.removeListener('mic:status', listener);
     }
   },
+  screen: {
+    capturePrimary: () => ipcRenderer.invoke('screen:capture-primary'),
+    monitorShow: () => ipcRenderer.invoke('screen:monitor-show'),
+    monitorHide: () => ipcRenderer.invoke('screen:monitor-hide')
+  },
   update: {
     getVersion: () => ipcRenderer.invoke('update:get-version'),
     check: () => ipcRenderer.invoke('update:check'),
