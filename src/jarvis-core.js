@@ -17,6 +17,7 @@ import { GroqClient } from './groq-client.js';
 import { WolframClient } from './wolfram-client.js';
 import { MODEL_TIERS } from './model-tiers.js';
 import { loadSettings, saveSettings } from './settings.js';
+import { classifyIntentWithAI, INTENT_CLASSIFIER_SYSTEM_PROMPT } from './ai-intent-classifier.js';
 
 export class JarvisCore {
   constructor(voiceEngine, harness, options = {}) {
@@ -627,6 +628,51 @@ export class JarvisCore {
         return await this.openRouter.generateCompletion(messages, options);
       } catch (e) {
         this.onLog({ type: 'WARNING', message: `[ENTITY RESOLVER] OpenRouter failed: ${e.message}` });
+        return null;
+      }
+    };
+
+    if (preferGroq) {
+      const groqAnswer = await tryGroq();
+      if (groqAnswer) return groqAnswer;
+      return tryOpenRouter();
+    }
+    const openRouterAnswer = await tryOpenRouter();
+    if (openRouterAnswer) return openRouterAnswer;
+    return tryGroq();
+  }
+
+  /**
+   * Runs the AI-first intent classification call. Same Groq/OpenRouter
+   * preferGroq logic as _resolveEntityWithLLM and _chatWithActiveLLM, but
+   * calls generateCompletion() directly with a low temperature so the model
+   * sticks to the requested JSON shape. Returns the raw string response (to
+   * be parsed/validated by classifyIntentWithAI in ai-intent-classifier.js),
+   * or null if no provider is configured or both fail.
+   */
+  async _classifyIntentWithAI(input) {
+    const messages = [
+      { role: 'system', content: INTENT_CLASSIFIER_SYSTEM_PROMPT },
+      { role: 'user', content: input }
+    ];
+    const options = { temperature: 0.1, maxTokens: 200 };
+    const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
+
+    const tryGroq = async () => {
+      if (!this.groq.apiKey) return null;
+      try {
+        return await this.groq.generateCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[AI INTENT CLASSIFIER] Groq failed: ${e.message}` });
+        return null;
+      }
+    };
+    const tryOpenRouter = async () => {
+      if (!this.openRouter.apiKey) return null;
+      try {
+        return await this.openRouter.generateCompletion(messages, options);
+      } catch (e) {
+        this.onLog({ type: 'WARNING', message: `[AI INTENT CLASSIFIER] OpenRouter failed: ${e.message}` });
         return null;
       }
     };
