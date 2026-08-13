@@ -9,7 +9,8 @@ const {
   checkForUpdate,
   downloadUpdate,
   installUpdate,
-  onUpdateState
+  onUpdateState,
+  getChangelog
 } = await import('../src/update-manager.js');
 
 test('isUpdateSupported is false when window.jarvisElectron is absent (browser dev mode)', () => {
@@ -26,9 +27,10 @@ test('all actions no-op safely when unsupported, instead of throwing', async () 
   const unsubscribe = onUpdateState(() => {});
   assert.equal(typeof unsubscribe, 'function');
   assert.doesNotThrow(() => unsubscribe());
+  assert.deepEqual(await getChangelog(), []);
 });
 
-test('isUpdateSupported is true and calls are delegated when running inside Electron', () => {
+test('isUpdateSupported is true and calls are delegated when running inside Electron', async () => {
   const calls = [];
   global.window.jarvisElectron = {
     update: {
@@ -36,7 +38,8 @@ test('isUpdateSupported is true and calls are delegated when running inside Elec
       check: () => calls.push('check'),
       download: () => calls.push('download'),
       install: () => calls.push('install'),
-      onState: (cb) => { calls.push('onState'); return () => calls.push('unsubscribed'); }
+      onState: (cb) => { calls.push('onState'); return () => calls.push('unsubscribed'); },
+      getChangelog: () => { calls.push('getChangelog'); return Promise.resolve([{ version: '1.5.1', notes: '- fixed a bug' }]); }
     }
   };
 
@@ -46,8 +49,10 @@ test('isUpdateSupported is true and calls are delegated when running inside Elec
   installUpdate();
   const unsubscribe = onUpdateState(() => {});
   unsubscribe();
+  const changelog = await getChangelog();
 
-  assert.deepEqual(calls, ['check', 'download', 'install', 'onState', 'unsubscribed']);
+  assert.deepEqual(calls, ['check', 'download', 'install', 'onState', 'unsubscribed', 'getChangelog']);
+  assert.deepEqual(changelog, [{ version: '1.5.1', notes: '- fixed a bug' }]);
 
   delete global.window.jarvisElectron;
 });

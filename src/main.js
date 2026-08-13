@@ -3,7 +3,7 @@ import { BrowserHarness } from './harness.js';
 import { JarvisCore } from './jarvis-core.js';
 import { ConversationController } from './conversation-controller.js';
 import { loadSettings, saveSettings } from './settings.js';
-import { isUpdateSupported, getCurrentVersion, checkForUpdate, downloadUpdate, installUpdate, onUpdateState } from './update-manager.js';
+import { isUpdateSupported, getCurrentVersion, checkForUpdate, downloadUpdate, installUpdate, onUpdateState, getChangelog } from './update-manager.js';
 import { MODEL_TIERS, TIER_ORDER } from './model-tiers.js';
 
 // DOM Element References
@@ -872,6 +872,23 @@ function initUpdatePanel() {
       checkForUpdate();
     }
   });
+
+  const updateLogBtn = document.getElementById('updateLogBtn');
+  const updateLogBox = document.getElementById('updateLogBox');
+  if (updateLogBtn && updateLogBox) {
+    updateLogBtn.addEventListener('click', async () => {
+      if (updateLogBox.style.display !== 'none') {
+        updateLogBox.style.display = 'none';
+        return;
+      }
+      updateLogBox.style.display = '';
+      updateLogBox.value = 'Loading…';
+      const releases = await getChangelog();
+      updateLogBox.value = releases.length
+        ? releases.map((r) => `${r.version}\n${r.notes}`).join('\n\n')
+        : 'No update log available.';
+    });
+  }
 }
 
 /**

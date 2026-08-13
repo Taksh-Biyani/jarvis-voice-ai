@@ -34,3 +34,9 @@ export function onUpdateState(callback) {
   if (!isUpdateSupported()) return () => {};
   return window.jarvisElectron.update.onState(callback);
 }
+
+/** Returns [{version, notes}, ...] from GitHub Releases, newest first, or [] if unsupported/failed. */
+export function getChangelog() {
+  if (!isUpdateSupported()) return Promise.resolve([]);
+  return window.jarvisElectron.update.getChangelog();
+}

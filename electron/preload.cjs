@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('jarvisElectron', {
     check: () => ipcRenderer.invoke('update:check'),
     download: () => ipcRenderer.invoke('update:download'),
     install: () => ipcRenderer.invoke('update:install'),
+    getChangelog: () => ipcRenderer.invoke('update:get-changelog'),
     onState: (callback) => {
       const listener = (event, data) => callback(data);
       ipcRenderer.on('update:state', listener);

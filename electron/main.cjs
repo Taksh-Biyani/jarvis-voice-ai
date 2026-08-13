@@ -825,6 +825,36 @@ function registerUpdateIpc() {
   ipcMain.handle('update:install', () => {
     if (updateReadyToInstall) autoUpdater.quitAndInstall();
   });
+
+  // Public GitHub Releases list — no auth needed for a public repo, just a
+  // User-Agent header (GitHub rejects requests without one). Same plain
+  // Node HTTPS pattern as registerSteamIpc, run in the main process to avoid
+  // renderer CORS.
+  ipcMain.handle('update:get-changelog', () => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/Taksh-Biyani/jarvis-voice-ai/releases?per_page=10',
+      headers: { 'User-Agent': 'jarvis-voice-ai' }
+    };
+    return new Promise((resolve) => {
+      https.get(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            resolve([]);
+            return;
+          }
+          try {
+            const releases = JSON.parse(data);
+            resolve(releases.map((r) => ({ version: r.tag_name, notes: r.body || '' })));
+          } catch (e) {
+            resolve([]);
+          }
+        });
+      }).on('error', () => resolve([]));
+    });
+  });
 }
 
 app.whenReady().then(() => {
