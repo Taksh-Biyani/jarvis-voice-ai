@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, shell, session, ipcMain, nativeImage, safeStorage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, session, ipcMain, nativeImage, safeStorage, desktopCapturer, screen } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -213,6 +213,28 @@ function startMic() {
 function registerMicIpc() {
   ipcMain.handle('mic:start', () => { startMic(); });
   ipcMain.handle('mic:stop', () => { stopMic(true); });
+}
+
+function registerScreenCaptureIpc() {
+  ipcMain.handle('screen:capture-primary', async () => {
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      });
+
+      const primarySource = sources.find(s => s.display_id === String(primaryDisplay.id)) || sources[0];
+      if (!primarySource || primarySource.thumbnail.isEmpty()) {
+        return { success: false, error: 'No screen source available to capture.' };
+      }
+
+      const dataUrl = `data:image/jpeg;base64,${primarySource.thumbnail.toJPEG(80).toString('base64')}`;
+      return { success: true, dataUrl };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
 }
 
 function registerSteamIpc() {
@@ -771,6 +793,7 @@ app.whenReady().then(() => {
   registerSteamIpc();
   registerGameLibraryIpc();
   registerMicIpc();
+  registerScreenCaptureIpc();
   registerWolframIpc();
   registerSpotifyIpc();
   registerSpotifyAuthIpc();
