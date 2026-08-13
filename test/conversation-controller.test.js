@@ -60,11 +60,15 @@ test('stop phrases end an active conversation', () => {
   const phrases = [
     'stop conversation',
     'end conversation',
+    'stop the conversation',
+    'end the conversation',
+    'Stop the conversation.',
     "that's all",
     'thats all',
     'goodbye jarvis',
     "Jarvis, that's all",
-    'Hey Jarvis, stop conversation'
+    'Hey Jarvis, stop conversation',
+    'Hey Jarvis, stop the conversation'
   ];
 
   for (const phrase of phrases) {
