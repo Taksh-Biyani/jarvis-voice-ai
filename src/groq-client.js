@@ -41,6 +41,8 @@ export class GroqClient {
 
   /**
    * Attempts chat completion cycling through the model queue on failure.
+   * options.tools/options.toolExecutor (both optional) enable autonomous
+   * function-calling — see src/jarvis-tools.js.
    */
   async generateCompletion(messages, options = {}) {
     if (!this.apiKey) throw new Error("Groq API Key not configured.");
@@ -56,7 +58,9 @@ export class GroqClient {
       onLog: this.onLog,
       logPrefix: 'GROQ',
       temperature: options.temperature,
-      maxTokens: options.maxTokens
+      maxTokens: options.maxTokens,
+      tools: options.tools,
+      toolExecutor: options.toolExecutor
     });
   }
 
@@ -84,16 +88,20 @@ export class GroqClient {
       logPrefix: 'GROQ VISION',
       temperature: options.temperature,
       maxTokens: options.maxTokens,
+      tools: options.tools,
+      toolExecutor: options.toolExecutor,
       extraBody: { reasoning_effort: 'none' }
     });
   }
 
   /**
    * Generates a JARVIS-persona voice response for the given user input.
+   * options.tools/options.toolExecutor pass straight through to
+   * generateCompletion — see src/jarvis-tools.js.
    */
-  async chatWithJarvis(userInput, context = []) {
+  async chatWithJarvis(userInput, context = [], options = {}) {
     try {
-      return await this.generateCompletion(buildJarvisMessages(userInput, context));
+      return await this.generateCompletion(buildJarvisMessages(userInput, context), options);
     } catch (err) {
       this.onLog({ type: 'WARNING', message: `[GROQ FALLBACK] ${err.message}` });
       return null; // null triggers OpenRouter fallback in JarvisCore

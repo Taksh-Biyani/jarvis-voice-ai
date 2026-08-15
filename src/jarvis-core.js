@@ -19,6 +19,7 @@ import { MODEL_TIERS } from './model-tiers.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { classifyIntentWithAI, INTENT_CLASSIFIER_SYSTEM_PROMPT } from './ai-intent-classifier.js';
 import { ScreenVisionHarness } from './screen-vision-harness.js';
+import { GROUNDING_TOOLS, createToolExecutor } from './jarvis-tools.js';
 
 export class JarvisCore {
   constructor(voiceEngine, harness, options = {}) {
@@ -56,6 +57,17 @@ export class JarvisCore {
     const wolframAppId = localStorage.getItem('jarvis_wolfram_app_id') || '';
 
     this.wolfram = new WolframClient(wolframAppId, {
+      onLog: (logData) => this.onLog(logData)
+    });
+
+    // Read-only grounding tools (WolframAlpha + web search) exposed to
+    // autonomous LLM function-calling for screen vision and general chat —
+    // see docs/superpowers/specs/2026-08-14-grounding-tool-calling-design.md.
+    // Action tools (game launch, Spotify, etc.) stay off this list.
+    this.groundingTools = GROUNDING_TOOLS;
+    this.toolExecutor = createToolExecutor({
+      wolfram: this.wolfram,
+      harness: this.harness,
       onLog: (logData) => this.onLog(logData)
     });
 
@@ -582,7 +594,14 @@ export class JarvisCore {
     // 9. Conversational Response via OpenRouter LLM (with Local Knowledge Base fallback)
     this._updateAgentState("agent-6", "THINKING", "Querying OpenRouter LLM API...");
 
-    let answerText = await this._chatWithActiveLLM(input, this.conversationHistory);
+    // Grounding tools here (but not on the MATH_QUERY/GOOGLE_SEARCH paths
+    // above, which have their own dedicated grounding logic) catch cases the
+    // intent classifier didn't tag as a specific tool — see
+    // docs/superpowers/specs/2026-08-14-grounding-tool-calling-design.md.
+    let answerText = await this._chatWithActiveLLM(input, this.conversationHistory, {
+      tools: this.groundingTools,
+      toolExecutor: this.toolExecutor
+    });
 
     if (answerText) {
       this.onLog({
@@ -646,16 +665,19 @@ export class JarvisCore {
     return loadSettings().useGroq || !this.openRouter.apiKey;
   }
 
-  async _chatWithActiveLLM(userInput, context) {
+  async _chatWithActiveLLM(userInput, context, options = {}) {
     // Prefer Groq when explicitly switched on, or automatically when
     // OpenRouter has no key configured — this is what makes the OpenRouter
-    // key optional as long as a Groq key is set.
+    // key optional as long as a Groq key is set. options.tools/toolExecutor
+    // (both optional) pass straight through — see src/jarvis-tools.js.
+    // Callers that want a tool-free answer (e.g. the MATH_QUERY fallback,
+    // which already has its own dedicated math prompt) simply omit options.
     const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
     if (preferGroq) {
-      const groqAnswer = await this.groq.chatWithJarvis(userInput, context);
+      const groqAnswer = await this.groq.chatWithJarvis(userInput, context, options);
       if (groqAnswer) return groqAnswer;
     }
-    return this.openRouter.chatWithJarvis(userInput, context);
+    return this.openRouter.chatWithJarvis(userInput, context, options);
   }
 
   /**
@@ -781,7 +803,10 @@ export class JarvisCore {
     // <think>...</think> reasoning block before the real answer — too small
     // a budget truncates mid-thought with no answer at all. See
     // stripThinkTags in llm-completion.js, which strips that block out.
-    const options = { temperature: 0.3, maxTokens: 600 };
+    // Grounding tools let the vision model call WolframAlpha instead of
+    // eyeballing arithmetic off the screenshot — see
+    // docs/superpowers/specs/2026-08-14-grounding-tool-calling-design.md.
+    const options = { temperature: 0.3, maxTokens: 600, tools: this.groundingTools, toolExecutor: this.toolExecutor };
     const preferGroq = loadSettings().useGroq || !this.openRouter.apiKey;
 
     const tryGroq = async () => {

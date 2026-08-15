@@ -31,6 +31,8 @@ export class OpenRouterClient {
 
   /**
    * Attempts chat completion cycling through the model queue on failure.
+   * options.tools/options.toolExecutor (both optional) enable autonomous
+   * function-calling — see src/jarvis-tools.js.
    */
   async generateCompletion(messages, options = {}) {
     if (!this.apiKey) throw new Error("OpenRouter API Key not configured.");
@@ -48,7 +50,9 @@ export class OpenRouterClient {
       onLog: this.onLog,
       logPrefix: 'OPENROUTER',
       temperature: options.temperature,
-      maxTokens: options.maxTokens
+      maxTokens: options.maxTokens,
+      tools: options.tools,
+      toolExecutor: options.toolExecutor
     });
   }
 
@@ -72,16 +76,20 @@ export class OpenRouterClient {
       onLog: this.onLog,
       logPrefix: 'OPENROUTER VISION',
       temperature: options.temperature,
-      maxTokens: options.maxTokens
+      maxTokens: options.maxTokens,
+      tools: options.tools,
+      toolExecutor: options.toolExecutor
     });
   }
 
   /**
    * Generates a JARVIS-persona voice response for the given user input.
+   * options.tools/options.toolExecutor pass straight through to
+   * generateCompletion — see src/jarvis-tools.js.
    */
-  async chatWithJarvis(userInput, context = []) {
+  async chatWithJarvis(userInput, context = [], options = {}) {
     try {
-      return await this.generateCompletion(buildJarvisMessages(userInput, context));
+      return await this.generateCompletion(buildJarvisMessages(userInput, context), options);
     } catch (err) {
       this.onLog({ type: 'WARNING', message: `[OPENROUTER FALLBACK] ${err.message}` });
       return null; // null triggers local knowledge base fallback in JarvisCore
